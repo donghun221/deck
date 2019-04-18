@@ -33,8 +33,8 @@ export class PageTitleService {
   private previousPageTitle = 'Spinnaker';
   private routeCount = 0;
 
+  public static $inject = ['$rootScope', '$stateParams', '$transitions'];
   constructor(private $rootScope: IScope, private $stateParams: StateParams, $transitions: TransitionService) {
-    'ngInject';
     document.title = 'Spinnaker: Loading...';
     $transitions.onStart({}, transition => {
       this.handleRoutingStart();
@@ -138,4 +138,4 @@ export const PAGE_TITLE_SERVICE = 'spinnaker.core.pageTitle.service';
 
 module(PAGE_TITLE_SERVICE, [require('@uirouter/angularjs').default])
   .service('pageTitleService', PageTitleService)
-  .run(['pageTitleService', (pts: PageTitleService) => pts]);
+  .run(['pageTitleService', (pageTitleService: PageTitleService) => pageTitleService]);

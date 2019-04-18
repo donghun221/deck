@@ -2,18 +2,18 @@
 
 import _ from 'lodash';
 
-import { AccountService, LoadBalancerWriter, APPLICATION_MODEL_BUILDER } from '@spinnaker/core';
+import { AccountService, LoadBalancerWriter, ApplicationModelBuilder } from '@spinnaker/core';
 
 import { OpenStackProviderSettings } from '../../../openstack.settings';
 
 describe('Controller: openstackCreateLoadBalancerCtrl', function() {
   // load the controller's module
-  beforeEach(window.module(require('./upsert.controller').name, APPLICATION_MODEL_BUILDER));
+  beforeEach(window.module(require('./upsert.controller').name));
 
   // Initialize the controller and a mock scope
   var testSuite;
   beforeEach(
-    window.inject(function($controller, $rootScope, $q, applicationModelBuilder) {
+    window.inject(function($controller, $rootScope, $q) {
       testSuite = this;
 
       this.loadBalancerDefaults = {
@@ -102,10 +102,11 @@ describe('Controller: openstackCreateLoadBalancerCtrl', function() {
         result: $q.when(null),
       };
 
-      this.mockApplication = applicationModelBuilder.createApplication('app', {
+      this.mockApplication = ApplicationModelBuilder.createApplicationForTests('app', {
         key: 'loadBalancers',
         lazy: false,
-        data: this.testData.loadBalancerList,
+        loader: () => $q.resolve(_.clone(this.testData.loadBalancerList)),
+        onLoad: (_app, data) => $q.resolve(data),
       });
       spyOn(this.mockApplication.loadBalancers, 'refresh').and.callThrough();
       this.mockApplication.loadBalancers.onNextRefresh = jasmine
@@ -233,6 +234,7 @@ describe('Controller: openstackCreateLoadBalancerCtrl', function() {
             beforeEach(function() {
               this.$scope.loadBalancer.account = 'account2';
               this.ctrl.accountUpdated();
+              this.$scope.$digest();
             });
 
             it('- updates the list of load balancer names', function() {

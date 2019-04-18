@@ -3,6 +3,7 @@ export * from './IArtifact';
 export * from './IArtifactEditorProps';
 export * from './IArtifactExtractor';
 export * from './IArtifactKindConfig';
+export * from './IArtifactSource';
 
 export * from './IBuild';
 export * from './IBuildDiffInfo';
@@ -37,6 +38,8 @@ export * from './IManifest';
 export * from './IOrchestratedItem';
 
 export * from './IPipeline';
+export * from './IPipelineTemplateV2';
+export * from './IPipelineTemplateConfigV2';
 export * from './IProject';
 export * from './IPubsubSubscription';
 
@@ -45,6 +48,7 @@ export * from './IRegionalCluster';
 export * from './ISecurityGroup';
 export * from './IServerGroup';
 export * from './IServerGroupManager';
+export * from './IService';
 export * from './ISnapshot';
 export * from './IStage';
 export * from './IStageContext';

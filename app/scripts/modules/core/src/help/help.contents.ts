@@ -21,6 +21,7 @@ const helpContents: { [key: string]: string } = {
         <li>Account</li>
         <li>Load Balancer Name</li>
         <li>Instance ID</li>
+        <li>Labels (comma-separated list of key-value pairs that must all apply to entity, e.g. <samp>labels:app=spinnaker, source=prod</samp>)</li>
       </ul>
       <p>You can search for multiple words or word fragments. For instance, to find all server groups in a prod stack with "canary" in the details, enter <samp>prod canary</samp>.</p>
       <p>To find a particular instance, enter the instance ID. Only the containing server group will be displayed, and the instance
@@ -53,6 +54,8 @@ const helpContents: { [key: string]: string } = {
         <li>Trigger</li>
         <li>Context - server groups, bakery results, etc.</li>
       </ul>`,
+  'pipeline.config.triggers.respectQuietPeriod': `
+      <p>The quiet period is a system operator designated period of time when automated pipelines and deploys should not run.</p>`,
   'pipeline.config.expectedArtifact':
     'Artifacts required for trigger to execute.  Only one of the artifacts needs to be present for the trigger to execute.',
   'pipeline.config.artifact.help': `
@@ -109,6 +112,8 @@ const helpContents: { [key: string]: string } = {
         </ol>
       </p>
       <p>See the <a href="https://www.spinnaker.io/reference/artifacts/in-pipelines">reference</a> for more information.</p>`,
+  'pipeline.config.expectedArtifact.usePriorExecution': `
+      <p>Attempt to match against an artifact in the prior pipeline execution's context. This ensures that you will always be using the most recently supplied artifact to this pipeline, and is generally a safe choice.</p>`,
   'pipeline.config.expectedArtifact.defaultArtifact': `
       <p>If your artifact either wasn't supplied from a trigger, or it wasn't found in a prior execution, the artifact specified below will end up in your pipeline's execution context.</p>
       <p>See the <a href="https://www.spinnaker.io/reference/artifacts/in-pipelines">reference</a> for more information.</p>`,
@@ -136,6 +141,12 @@ const helpContents: { [key: string]: string } = {
   'pipeline.config.expectedArtifact.defaultGitlab.reference': `
       <p>The Gitlab API file url the artifact lives under. The domain name may change if you're running your own Gitlab server. The repository and path to files must be URL encoded.</p>
       <p>An example is <code>https://gitlab.com/api/v4/projects/$ORG%2F$REPO/repository/files/path%2Fto%2Ffile.yml/raw</code>. See <a href="https://www.spinnaker.io/reference/artifacts/types/gitlab-file/#fields">our docs</a> for more info.</p>`,
+  'pipeline.config.expectedArtifact.helm.account': `
+      <p>The account contains url the charts can be found</p>`,
+  'pipeline.config.expectedArtifact.helm.name': `
+      <p>The name of chart you want to trigger on changes to</p>`,
+  'pipeline.config.expectedArtifact.helm.version': `
+      <p>The version of chart you want to trigger on changes to</p>`,
   'pipeline.config.expectedArtifact.defaultBitbucket.reference': `
       <p>The Bitbucket API file url the artifact lives under. The domain name may change if you're running your own Bitbucket server. The repository and path to files must be URL encoded.</p>
       <p>An example is <code>https://api.bitbucket.org/1.0/repositories/$ORG/$REPO/raw/$VERSION/$FILEPATH</code>. See <a href="https://www.spinnaker.io/reference/artifacts/types/bitbucket-file/#fields">our docs</a> for more info.</p>`,
@@ -170,6 +181,10 @@ const helpContents: { [key: string]: string } = {
   `,
   'loadBalancer.advancedSettings.healthTimeout':
     '<p>Configures the timeout, in seconds, for reaching the healthCheck target.  Must be less than the interval.</p><p> Default: <b>5</b></p>',
+  'loadBalancer.advancedSettings.idleTimeout':
+    '<p>Configures the idle timeout, in seconds. If no data has been sent or received by the time that the idle timeout period elapses, the load balancer closes the connection. </p><p> Default: <b>60</b></p>',
+  'loadBalancer.advancedSettings.deletionProtection':
+    '<p>To prevent your load balancer from being deleted accidentally, you can enable deletion protection.</p><p> Default: <b>false</b></p>',
   'loadBalancer.advancedSettings.healthInterval':
     '<p>Configures the interval, in seconds, between ELB health checks.  Must be greater than the timeout.</p><p>Default: <b>10</b></p>',
   'loadBalancer.advancedSettings.healthyThreshold':
@@ -238,6 +253,8 @@ const helpContents: { [key: string]: string } = {
       <p>For example, if the user selects "rollback" from this list of options, that branch can be activated by using the expression:
         <samp class="small">execution.stages[n].context.judgmentInput=="rollback"</samp></p>`,
   'pipeline.config.bake.manifest.expectedArtifact': '<p>This is the template you want to render.</p>',
+  'pipeline.config.bake.manifest.overrideExpressionEvaluation':
+    '<p>Explicitly evaluate SpEL expressions in overrides just prior to manifest baking. Can be paired with the "Skip SpEL evaluation" option in the Deploy Manifest stage when baking a third-party manifest artifact with expressions not meant for Spinnaker to evaluate as SpEL.</p>',
   'pipeline.config.haltPipelineOnFailure':
     'Immediately halts execution of all running stages and fails the entire execution.',
   'pipeline.config.haltBranchOnFailure':
@@ -304,6 +321,7 @@ const helpContents: { [key: string]: string } = {
     '<p>(Optional) The name to the properties file produced by the script execution to be used by later stages of the Spinnaker pipeline. </p>',
   'pipeline.config.docker.trigger.tag':
     '<p>(Optional) If specified, only the tags that match this Java Regular Expression will be triggered. Leave empty to trigger builds on any tag pushed.</p><p>Builds will not be triggered off the latest tag or updates to existing tags.</p>',
+  'pipeline.config.docker.trigger.digest': '<p>The SHA256 hash of the image.</p>',
   'pipeline.config.git.trigger.branch':
     '<p>(Optional) If specified, only pushes to the branches that match this Java Regular Expression will be triggered. Leave empty to trigger builds for every branch.</p>',
   'pipeline.config.git.trigger.githubSecret':
@@ -406,9 +424,13 @@ const helpContents: { [key: string]: string } = {
   'pipeline.config.webhook.terminalStatuses':
     'Comma-separated list of strings that will be considered as TERMINAL status.',
   'pipeline.config.webhook.customHeaders': 'Key-value pairs to be sent as additional headers to the service.',
+  'pipeline.config.webhook.failFastCodes':
+    'Comma-separated HTTP status codes (4xx or 5xx) that will cause this webhook stage to fail without retrying.',
   'pipeline.config.parameter.label': '(Optional): a label to display when users are triggering the pipeline manually',
   'pipeline.config.parameter.description': `(Optional): if supplied, will be displayed to users as a tooltip
       when triggering the pipeline manually. You can include HTML in this field.`,
+  'pipeline.config.parameter.pinned': `(Optional): if checked, this parameter will be always shown in a pipeline execution view, otherwise it'll be collapsed by default.`,
+  'pipeline.config.parameter.pinAll': `(Optional): if checked, all parameters will be shown in a pipeline execution view.`,
   'pipeline.config.failOnFailedExpressions': `When this option is enabled, the stage will be marked as failed if it contains any failed expressions`,
   'pipeline.config.roles.help': `
     <p> When the pipeline is triggered using an automated trigger, these roles will be used to decide if the pipeline has permissions to access a protected application or account.</p>
@@ -421,6 +443,9 @@ const helpContents: { [key: string]: string } = {
     </li>
     </ul>
     <p><strong>Note:</strong> To prevent privilege escalation vulnerabilities, a user must be a member of <strong>all</strong> of the groups specified here in order to modify, and execute the pipeline.</p>`,
+  'pipeline.config.entitytags.namespace': `All tags have an associated namespace (<strong>default</strong> will be used if unspecified) that provides a means of grouping tags by a logical owner.`,
+  'pipeline.config.entitytags.value': `Value can either be a string or an object. If you want to use an object, input a valid JSON string.`,
+  'pipeline.config.entitytags.region': `(Optional) Target a specific region, use * if you want to apply to all regions.`,
 };
 
 Object.keys(helpContents).forEach(key => HelpContentsRegistry.register(key, helpContents[key]));

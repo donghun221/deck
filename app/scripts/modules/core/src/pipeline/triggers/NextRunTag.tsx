@@ -1,11 +1,11 @@
 import * as React from 'react';
-import * as moment from 'moment';
+import { DateTime } from 'luxon';
 
 import { IPipeline, ICronTrigger } from 'core/domain';
 import { Popover } from 'core/presentation/Popover';
 import { SETTINGS } from 'core/config/settings';
 import { later } from 'core/utils/later/later';
-import { timestamp } from 'core/utils/timeFormatters';
+import { timestamp, relativeTime } from 'core/utils/timeFormatters';
 
 export interface INextRunTagProps {
   pipeline: IPipeline;
@@ -30,28 +30,13 @@ export class NextRunTag extends React.Component<INextRunTagProps, INextRunTagSta
       ) as ICronTrigger[];
       const nextTimes: number[] = [];
       crons.forEach(cron => {
-        const parts = cron.cronExpression.split(' ');
-        const hours = parts[2];
-        if (!isNaN(parseInt(hours, 10))) {
-          const allHours = hours.split('/');
-          const tz = SETTINGS.defaultTimeZone;
-          let offset = moment.tz.zone(tz).offset(Date.now());
-          if (offset) {
-            offset /= 60;
-            const start = parseInt(allHours[0], 10);
-            allHours[0] = ((start + offset) % 24).toString();
-            parts[2] = allHours.join('/');
-          }
-        }
-        const schedule = later.parse.cron(parts.join(' '), true);
-        const nextRun = later.schedule(schedule).next(1);
+        const timezoneOffsetInMs = DateTime.local().setZone(SETTINGS.defaultTimeZone).offset * 60 * 1000;
+        const nextRun = later
+          .schedule(later.parse.cron(cron.cronExpression, true))
+          .next(1, new Date(Date.now() + timezoneOffsetInMs));
+
         if (nextRun) {
-          nextTimes.push(
-            later
-              .schedule(schedule)
-              .next(1)
-              .getTime(),
-          );
+          nextTimes.push(nextRun.getTime() - timezoneOffsetInMs);
         }
       });
       if (nextTimes.length) {
@@ -72,7 +57,7 @@ export class NextRunTag extends React.Component<INextRunTagProps, INextRunTagSta
   };
 
   public render(): React.ReactElement<NextRunTag> {
-    const nextDuration = moment(this.state.nextScheduled).fromNow();
+    const nextDuration = relativeTime(this.state.nextScheduled);
     const visible = !this.props.pipeline.disabled && this.state.hasNextScheduled;
     return (
       <span style={{ visibility: visible ? 'visible' : 'hidden' }} className="next-run-tag">

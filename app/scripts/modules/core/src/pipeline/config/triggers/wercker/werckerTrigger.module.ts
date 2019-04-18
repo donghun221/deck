@@ -1,11 +1,12 @@
 import { IController, IScope, module } from 'angular';
 
+import { ArtifactTypePatterns } from 'core/artifact';
 import { IgorService, BuildServiceType } from 'core/ci/igor.service';
 import { Registry } from 'core/registry';
 import { ServiceAccountReader } from 'core/serviceAccount/ServiceAccountReader';
 import { IWerckerTrigger } from 'core/domain/ITrigger';
-import { SETTINGS } from 'core/config/settings';
 
+import { SETTINGS } from 'core/config/settings';
 import { WerckerTriggerTemplate } from './WerckerTriggerTemplate';
 
 export interface IWerckerTriggerViewState {
@@ -29,8 +30,8 @@ export class WerckerTrigger implements IController {
   public fiatEnabled: boolean;
   public serviceAccounts: string[];
 
+  public static $inject = ['$scope', 'trigger'];
   constructor($scope: IScope, public trigger: IWerckerTrigger) {
-    'ngInject';
     this.fiatEnabled = SETTINGS.feature.fiatEnabled;
     ServiceAccountReader.getServiceAccounts().then(accounts => {
       this.serviceAccounts = accounts || [];
@@ -130,7 +131,7 @@ export class WerckerTrigger implements IController {
 }
 
 export const WERCKER_TRIGGER = 'spinnaker.core.pipeline.config.trigger.wercker';
-module(WERCKER_TRIGGER, [require('../trigger.directive.js').name])
+module(WERCKER_TRIGGER, [require('../trigger.directive').name])
   .config(() => {
     Registry.pipeline.registerTrigger({
       label: 'Wercker',
@@ -140,6 +141,7 @@ module(WERCKER_TRIGGER, [require('../trigger.directive.js').name])
       controllerAs: '$ctrl',
       templateUrl: require('./werckerTrigger.html'),
       manualExecutionComponent: WerckerTriggerTemplate,
+      excludedArtifactTypePatterns: [ArtifactTypePatterns.JENKINS_FILE],
       validators: [
         {
           type: 'requiredField',

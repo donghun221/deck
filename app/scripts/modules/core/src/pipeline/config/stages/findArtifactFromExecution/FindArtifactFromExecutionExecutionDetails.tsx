@@ -1,7 +1,11 @@
 import * as React from 'react';
 
-import { ExecutionDetailsSection, IExecutionDetailsSectionProps } from 'core/pipeline/config/stages/core';
-import { StageExecutionLogs, StageFailureMessage } from 'core/pipeline/details';
+import {
+  ExecutionDetailsSection,
+  IExecutionDetailsSectionProps,
+  StageExecutionLogs,
+  StageFailureMessage,
+} from 'core/pipeline';
 import { JsonUtils } from 'core/utils';
 
 export function FindArtifactFromExecutionExecutionDetails(props: IExecutionDetailsSectionProps) {
@@ -28,6 +32,8 @@ export function FindArtifactFromExecutionExecutionDetails(props: IExecutionDetai
   );
 }
 
+// TODO: refactor this to not use namespace
+// eslint-disable-next-line
 export namespace FindArtifactFromExecutionExecutionDetails {
   export const title = 'findArtifactFromExecutionConfig';
 }

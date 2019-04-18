@@ -1,8 +1,7 @@
 import * as React from 'react';
 
-import { ExecutionDetailsSection, IExecutionDetailsSectionProps } from 'core/pipeline/config/stages/core';
+import { ExecutionDetailsSection, IExecutionDetailsSectionProps, StageFailureMessage } from 'core/pipeline';
 import { AccountTag } from 'core/account';
-import { StageFailureMessage } from 'core/pipeline/details';
 
 import { IFindAmiStageContext } from './findAmiStage';
 
@@ -51,6 +50,8 @@ export function FindAmiExecutionDetails(props: IExecutionDetailsSectionProps) {
   );
 }
 
+// TODO: refactor this to not use namespace
+// eslint-disable-next-line
 export namespace FindAmiExecutionDetails {
   export const title = 'findImageConfig';
 }

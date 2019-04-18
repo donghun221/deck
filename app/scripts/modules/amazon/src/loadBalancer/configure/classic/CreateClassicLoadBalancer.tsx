@@ -1,16 +1,16 @@
 import * as React from 'react';
 import { cloneDeep, get } from 'lodash';
 import { FormikErrors, FormikValues } from 'formik';
-import { IDeferred, IPromise } from 'angular';
-import { IModalServiceInstance } from 'angular-ui-bootstrap';
-import { $q } from 'ngimport';
+import { IPromise } from 'angular';
 
 import {
   AccountService,
   LoadBalancerWriter,
+  FirewallLabels,
   ReactInjector,
   TaskMonitor,
   WizardModal,
+  WizardPage,
   ILoadBalancerModalProps,
   noop,
   ReactModal,
@@ -33,14 +33,10 @@ export interface ICreateClassicLoadBalancerProps extends ILoadBalancerModalProps
 }
 
 export interface ICreateClassicLoadBalancerState {
-  includeSecurityGroups: boolean;
   isNew: boolean;
   loadBalancerCommand: IAmazonClassicLoadBalancerUpsertCommand;
   taskMonitor: TaskMonitor;
 }
-
-type ClassicLoadBalancerModal = new () => WizardModal<IAmazonClassicLoadBalancerUpsertCommand>;
-const ClassicLoadBalancerModal = WizardModal as ClassicLoadBalancerModal;
 
 export class CreateClassicLoadBalancer extends React.Component<
   ICreateClassicLoadBalancerProps,
@@ -51,9 +47,9 @@ export class CreateClassicLoadBalancer extends React.Component<
     dismissModal: noop,
   };
 
+  private _isUnmounted = false;
   private refreshUnsubscribe: () => void;
   private certificateTypes = get(AWSProviderSettings, 'loadBalancers.certificateTypes', ['iam', 'acm']);
-  private $uibModalInstanceEmulation: IModalServiceInstance & { deferred?: IDeferred<any> };
 
   public static show(props: ICreateClassicLoadBalancerProps): Promise<IAmazonClassicLoadBalancerUpsertCommand> {
     const modalProps = { dialogClassName: 'wizard-modal modal-lg' };
@@ -68,20 +64,10 @@ export class CreateClassicLoadBalancer extends React.Component<
       : AwsReactInjector.awsLoadBalancerTransformer.constructNewClassicLoadBalancerTemplate(props.app);
 
     this.state = {
-      includeSecurityGroups: !!loadBalancerCommand.vpcId,
       isNew: !props.loadBalancer,
       loadBalancerCommand,
       taskMonitor: null,
     };
-
-    const deferred = $q.defer();
-    const promise = deferred.promise;
-    this.$uibModalInstanceEmulation = {
-      result: promise,
-      close: () => this.props.dismissModal(),
-      dismiss: () => this.props.dismissModal(),
-    } as IModalServiceInstance;
-    Object.assign(this.$uibModalInstanceEmulation, { deferred });
   }
 
   protected certificateIdAsARN(
@@ -148,6 +134,10 @@ export class CreateClassicLoadBalancer extends React.Component<
   }
 
   protected onApplicationRefresh(values: IAmazonClassicLoadBalancerUpsertCommand): void {
+    if (this._isUnmounted) {
+      return;
+    }
+
     this.refreshUnsubscribe = undefined;
     this.props.dismissModal();
     this.setState({ taskMonitor: undefined });
@@ -167,6 +157,7 @@ export class CreateClassicLoadBalancer extends React.Component<
   }
 
   public componentWillUnmount(): void {
+    this._isUnmounted = true;
     if (this.refreshUnsubscribe) {
       this.refreshUnsubscribe();
     }
@@ -192,7 +183,7 @@ export class CreateClassicLoadBalancer extends React.Component<
       const taskMonitor = new TaskMonitor({
         application: app,
         title: `${isNew ? 'Creating' : 'Updating'} your load balancer`,
-        modalInstance: this.$uibModalInstanceEmulation,
+        modalInstance: TaskMonitor.modalInstanceEmulation(() => this.props.dismissModal()),
         onTaskComplete: () => this.onTaskComplete(loadBalancerCommandFormatted),
       });
 
@@ -207,25 +198,16 @@ export class CreateClassicLoadBalancer extends React.Component<
     }
   };
 
-  private validate = (values: FormikValues): FormikErrors<IAmazonClassicLoadBalancerUpsertCommand> => {
-    this.setState({ includeSecurityGroups: !!values.vpcId });
+  private validate = (_values: FormikValues): FormikErrors<IAmazonClassicLoadBalancerUpsertCommand> => {
     const errors = {} as FormikErrors<IAmazonClassicLoadBalancerUpsertCommand>;
     return errors;
   };
 
   public render(): React.ReactElement<CreateClassicLoadBalancer> {
     const { app, dismissModal, forPipelineConfig, loadBalancer } = this.props;
-    const { includeSecurityGroups, isNew, loadBalancerCommand, taskMonitor } = this.state;
+    const { isNew, loadBalancerCommand, taskMonitor } = this.state;
 
-    const hideSections = new Set<string>();
-
-    if (!isNew && !forPipelineConfig) {
-      hideSections.add(LoadBalancerLocation.label);
-    }
-
-    if (!includeSecurityGroups) {
-      hideSections.add(SecurityGroups.label);
-    }
+    const showLocationSection = isNew || forPipelineConfig;
 
     let heading = forPipelineConfig ? 'Configure Classic Load Balancer' : 'Create New Classic Load Balancer';
     if (!isNew) {
@@ -233,7 +215,7 @@ export class CreateClassicLoadBalancer extends React.Component<
     }
 
     return (
-      <ClassicLoadBalancerModal
+      <WizardModal<IAmazonClassicLoadBalancerUpsertCommand>
         heading={heading}
         initialValues={loadBalancerCommand}
         taskMonitor={taskMonitor}
@@ -241,19 +223,60 @@ export class CreateClassicLoadBalancer extends React.Component<
         closeModal={this.submit}
         submitButtonLabel={forPipelineConfig ? (isNew ? 'Add' : 'Done') : isNew ? 'Create' : 'Update'}
         validate={this.validate}
-        hideSections={hideSections}
-      >
-        <LoadBalancerLocation
-          app={app}
-          isNew={isNew}
-          forPipelineConfig={forPipelineConfig}
-          loadBalancer={loadBalancer}
-        />
-        <SecurityGroups done={true} />
-        <Listeners done={true} />
-        <HealthCheck done={true} />
-        <AdvancedSettings done={true} />
-      </ClassicLoadBalancerModal>
+        render={({ formik, nextIdx, wizard }) => (
+          <>
+            {showLocationSection && (
+              <WizardPage
+                label="Location"
+                wizard={wizard}
+                order={nextIdx()}
+                render={({ innerRef }) => (
+                  <LoadBalancerLocation
+                    app={app}
+                    formik={formik}
+                    isNew={isNew}
+                    forPipelineConfig={forPipelineConfig}
+                    loadBalancer={loadBalancer}
+                    ref={innerRef}
+                  />
+                )}
+              />
+            )}
+
+            {!!formik.values.vpcId && (
+              <WizardPage
+                label={FirewallLabels.get('Firewall')}
+                wizard={wizard}
+                order={nextIdx()}
+                render={({ innerRef, onLoadingChanged }) => (
+                  <SecurityGroups formik={formik} isNew={isNew} onLoadingChanged={onLoadingChanged} ref={innerRef} />
+                )}
+              />
+            )}
+
+            <WizardPage
+              label="Listeners"
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => <Listeners ref={innerRef} formik={formik} app={app} />}
+            />
+
+            <WizardPage
+              label="Health Check"
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => <HealthCheck ref={innerRef} formik={formik} />}
+            />
+
+            <WizardPage
+              label="Advanced Settings"
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => <AdvancedSettings ref={innerRef} formik={formik} />}
+            />
+          </>
+        )}
+      />
     );
   }
 }

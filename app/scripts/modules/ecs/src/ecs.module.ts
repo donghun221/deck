@@ -9,14 +9,17 @@ import { ECS_NETWORKING_SECTION } from './serverGroup/configure/wizard/networkin
 import { SERVER_GROUP_DETAILS_MODULE } from './serverGroup/details/serverGroupDetails.module';
 import { IAM_ROLE_READ_SERVICE } from './iamRoles/iamRole.read.service';
 import { ECS_CLUSTER_READ_SERVICE } from './ecsCluster/ecsCluster.read.service';
+import { ECS_SECRET_READ_SERVICE } from './secrets/secret.read.service';
 import { METRIC_ALARM_READ_SERVICE } from './metricAlarm/metricAlarm.read.service';
 import { PLACEMENT_STRATEGY_SERVICE } from './placementStrategy/placementStrategy.service';
 import './ecs.help';
 import { COMMON_MODULE } from './common/common.module';
+import { ECS_SERVERGROUP_MODULE } from './serverGroup/serverGroup.module';
+import { ECS_SERVER_GROUP_LOGGING } from './serverGroup/configure/wizard/logging/logging.component';
 
 import './logo/ecs.logo.less';
 
-require('./ecs.settings.ts');
+require('./ecs.settings');
 
 // load all templates into the $templateCache
 const templates = require.context('./', true, /\.html$/);
@@ -33,10 +36,12 @@ angular
     ECS_SERVER_GROUP_TRANSFORMER,
     // require('./pipeline/stages/cloneServerGroup/ecsCloneServerGroupStage').name,  // TODO(Bruno Carrier): We should enable this on Clouddriver before revealing this stage
     require('./serverGroup/configure/wizard/advancedSettings/advancedSettings.component').name,
-    require('./serverGroup/configure/wizard/verticalScaling/verticalScaling.component').name,
+    require('./serverGroup/configure/wizard/container/container.component').name,
     require('./serverGroup/configure/wizard/horizontalScaling/horizontalScaling.component').name,
+    ECS_SERVER_GROUP_LOGGING,
     ECS_NETWORKING_SECTION,
     ECS_CLUSTER_READ_SERVICE,
+    ECS_SECRET_READ_SERVICE,
     METRIC_ALARM_READ_SERVICE,
     PLACEMENT_STRATEGY_SERVICE,
     COMMON_MODULE,
@@ -51,6 +56,8 @@ angular
     require('./pipeline/stages/resizeAsg/ecsResizeAsgStage').name,
     require('./pipeline/stages/scaleDownCluster/ecsScaleDownClusterStage').name,
     require('./pipeline/stages/shrinkCluster/ecsShrinkClusterStage').name,
+    require('./securityGroup/securityGroup.transformer').name,
+    ECS_SERVERGROUP_MODULE,
   ])
   .config(function() {
     CloudProviderRegistry.registerProvider('ecs', {
@@ -69,6 +76,9 @@ angular
       instance: {
         detailsTemplateUrl: require('./instance/details/instanceDetails.html'),
         detailsController: 'ecsInstanceDetailsCtrl',
+      },
+      securityGroup: {
+        transformer: 'ecsSecurityGroupTransformer',
       },
     });
   });

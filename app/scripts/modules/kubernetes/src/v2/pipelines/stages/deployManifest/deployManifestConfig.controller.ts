@@ -1,13 +1,24 @@
 import { IController, IScope } from 'angular';
-import { loadAll } from 'js-yaml';
+import { get, defaults } from 'lodash';
+import {
+  ExpectedArtifactSelectorViewController,
+  NgGenericArtifactDelegate,
+  IManifest,
+  IArtifact,
+  IExpectedArtifact,
+  ArtifactTypePatterns,
+  SETTINGS,
+  yamlDocumentsToString,
+} from '@spinnaker/core';
 
 import {
   IKubernetesManifestCommandMetadata,
   IKubernetesManifestCommandData,
   KubernetesManifestCommandBuilder,
-} from '../../../manifest/manifestCommandBuilder.service';
+} from 'kubernetes/v2/manifest/manifestCommandBuilder.service';
 
-import { ExpectedArtifactService, IExpectedArtifact, ArtifactTypePatterns } from '@spinnaker/core';
+import { IManifestBindArtifact } from './ManifestBindArtifactsSelector';
+import { ITrafficManagementConfig, defaultTrafficManagementConfig } from './ManifestDeploymentOptions';
 
 export class KubernetesV2DeployManifestConfigCtrl implements IController {
   public state = {
@@ -17,50 +28,111 @@ export class KubernetesV2DeployManifestConfigCtrl implements IController {
   public metadata: IKubernetesManifestCommandMetadata;
   public textSource = 'text';
   public artifactSource = 'artifact';
+  public manifestArtifactDelegate: NgGenericArtifactDelegate;
+  public manifestArtifactController: ExpectedArtifactSelectorViewController;
   public sources = [this.textSource, this.artifactSource];
-  public excludedManifestArtifactPatterns = [ArtifactTypePatterns.KUBERNETES, ArtifactTypePatterns.DOCKER_IMAGE];
+  public rawManifest: string;
 
-  public expectedArtifacts: IExpectedArtifact[];
+  public static $inject = ['$scope'];
 
   constructor(private $scope: IScope) {
-    'ngInject';
+    this.manifestArtifactDelegate = new NgGenericArtifactDelegate($scope, 'manifest');
+    this.manifestArtifactController = new ExpectedArtifactSelectorViewController(this.manifestArtifactDelegate);
+
+    const stage = this.$scope.stage;
+    this.$scope.bindings = (stage.requiredArtifactIds || [])
+      .map((id: string) => ({ expectedArtifactId: id }))
+      .concat(stage.requiredArtifacts || []);
+
+    this.$scope.excludedManifestArtifactTypes = [
+      ArtifactTypePatterns.DOCKER_IMAGE,
+      ArtifactTypePatterns.KUBERNETES,
+      ArtifactTypePatterns.FRONT50_PIPELINE_TEMPLATE,
+      ArtifactTypePatterns.EMBEDDED_BASE64,
+    ];
+
     KubernetesManifestCommandBuilder.buildNewManifestCommand(
       this.$scope.application,
-      this.$scope.stage.manifests || this.$scope.stage.manifest,
-      this.$scope.stage.moniker,
+      stage.manifests || stage.manifest,
+      stage.moniker,
     ).then((builtCommand: IKubernetesManifestCommandData) => {
-      if (this.$scope.stage.isNew) {
-        Object.assign(this.$scope.stage, builtCommand.command);
-        this.$scope.stage.source = this.textSource;
+      if (stage.isNew) {
+        defaults(stage, builtCommand.command, {
+          manifestArtifactAccount: '',
+          source: this.textSource,
+          skipExpressionEvaluation: false,
+        });
       }
-
-      if (!this.$scope.stage.manifestArtifactAccount) {
-        this.$scope.stage.manifestArtifactAccount = '';
+      if (!stage.trafficManagement) {
+        stage.trafficManagement = defaultTrafficManagementConfig;
       }
-
       this.metadata = builtCommand.metadata;
       this.state.loaded = true;
+      this.manifestArtifactDelegate.setAccounts(get(this, ['metadata', 'backingData', 'artifactAccounts'], []));
+      this.manifestArtifactController.updateAccounts(this.manifestArtifactDelegate.getSelectedExpectedArtifact());
+      if (stage.source === this.textSource) {
+        this.initRawManifest();
+      }
     });
+  }
 
-    this.expectedArtifacts = ExpectedArtifactService.getExpectedArtifactsAvailableToStage(
-      $scope.stage,
-      $scope.$parent.pipeline,
+  public onManifestExpectedArtifactSelected = (expectedArtifact: IExpectedArtifact) => {
+    this.$scope.$applyAsync(() => {
+      this.$scope.stage.manifestArtifactId = expectedArtifact.id;
+    });
+  };
+
+  public onManifestArtifactEdited = (artifact: IArtifact) => {
+    this.$scope.$applyAsync(() => {
+      this.$scope.stage.manifestArtifact = artifact;
+    });
+  };
+
+  public onRequiredArtifactsChanged = (bindings: IManifestBindArtifact[]) => {
+    this.$scope.$applyAsync(() => {
+      this.$scope.bindings = bindings;
+      this.$scope.stage.requiredArtifactIds = bindings.filter((b: IManifestBindArtifact) => b.expectedArtifactId);
+      this.$scope.stage.requiredArtifacts = bindings.filter((b: IManifestBindArtifact) => b.artifact);
+    });
+  };
+
+  public canShowAccountSelect() {
+    return (
+      this.$scope.stage.source === this.artifactSource &&
+      !this.$scope.showCreateArtifactForm &&
+      (this.manifestArtifactController.accountsForArtifact.length > 1 &&
+        this.manifestArtifactDelegate.getSelectedExpectedArtifact() != null)
     );
   }
 
-  public change() {
-    this.$scope.ctrl.metadata.yamlError = false;
-    try {
-      this.$scope.stage.manifests = [];
-      loadAll(this.metadata.manifestText, doc => {
-        if (Array.isArray(doc)) {
-          doc.forEach(d => this.$scope.stage.manifests.push(d));
-        } else {
-          this.$scope.stage.manifests.push(doc);
-        }
-      });
-    } catch (e) {
-      this.$scope.ctrl.metadata.yamlError = true;
-    }
+  public handleCopy = (manifest: IManifest) => {
+    this.$scope.stage.manifests = [manifest];
+    this.initRawManifest();
+    // This method is called from a React component.
+    this.$scope.$applyAsync();
+  };
+
+  public checkFeatureFlag(flag: string): boolean {
+    return !!SETTINGS.feature[flag];
   }
+
+  // If we have more than one manifest, render as a
+  // list of manifests. Otherwise, hide the fact
+  // that the underlying model is a list.
+  public initRawManifest = (): void => {
+    this.rawManifest = yamlDocumentsToString(this.$scope.stage.manifests);
+  };
+
+  public handleRawManifestChange = (rawManifest: string, manifests: any): void => {
+    this.rawManifest = rawManifest;
+    this.$scope.stage.manifests = manifests;
+    // This method is called from a React component.
+    this.$scope.$applyAsync();
+  };
+
+  public handleTrafficManagementConfigChange = (trafficManagementConfig: ITrafficManagementConfig): void => {
+    this.$scope.stage.trafficManagement = trafficManagementConfig;
+    // This method is called from a React component.
+    this.$scope.$applyAsync();
+  };
 }

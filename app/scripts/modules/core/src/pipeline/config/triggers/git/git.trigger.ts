@@ -1,10 +1,12 @@
 import { IController, IScope, module } from 'angular';
 import { has, trim } from 'lodash';
 
+import { ArtifactTypePatterns, excludeAllTypesExcept } from 'core/artifact';
 import { SETTINGS } from 'core/config/settings';
 import { IGitTrigger } from 'core/domain/ITrigger';
 import { Registry } from 'core/registry';
 import { ServiceAccountReader } from 'core/serviceAccount/ServiceAccountReader';
+import { GitTriggerExecutionStatus } from './GitTriggerExecutionStatus';
 
 class GitTriggerController implements IController {
   public fiatEnabled: boolean = SETTINGS.feature.fiatEnabled;
@@ -14,27 +16,31 @@ class GitTriggerController implements IController {
     'pipeline.config.git.project': {
       bitbucket: 'Team or User',
       github: 'Organization or User',
+      gitlab: 'Organization or User',
       stash: 'Project',
     },
     'pipeline.config.git.slug': {
       bitbucket: 'Repo name',
       github: 'Project',
+      gitlab: 'Project',
       stash: 'Repo name',
     },
     'vm.trigger.project': {
       bitbucket: 'Team or User name, i.e. spinnaker for bitbucket.org/spinnaker/echo',
       github: 'Organization or User name, i.e. spinnaker for github.com/spinnaker/echo',
+      gitlab: 'Organization or User name, i.e. spinnaker for gitlab.com/spinnaker/echo',
       stash: 'Project name, i.e. SPKR for stash.mycorp.com/projects/SPKR/repos/echo',
     },
     'vm.trigger.slug': {
       bitbucket: 'Repository name (not the url), i.e, echo for bitbucket.org/spinnaker/echo',
       github: 'Project name (not the url), i.e, echo for github.com/spinnaker/echo',
+      gitlab: 'Project name (not the url), i.e. echo for gitlab.com/spinnaker/echo',
       stash: 'Repository name (not the url), i.e, echo for stash.mycorp.com/projects/SPKR/repos/echo',
     },
   };
 
+  public static $inject = ['trigger', '$scope'];
   constructor(public trigger: IGitTrigger, private $scope: IScope) {
-    'ngInject';
     this.initialize();
   }
 
@@ -70,6 +76,12 @@ module(GIT_TRIGGER, [])
       controller: 'GitTriggerCtrl',
       controllerAs: 'vm',
       templateUrl: require('./gitTrigger.html'),
+      executionStatusComponent: GitTriggerExecutionStatus,
+      excludedArtifactTypePatterns: excludeAllTypesExcept(
+        ArtifactTypePatterns.GITHUB_FILE,
+        ArtifactTypePatterns.GITLAB_FILE,
+        ArtifactTypePatterns.BITBUCKET_FILE,
+      ),
       validators: [
         {
           type: 'serviceAccountAccess',

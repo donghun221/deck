@@ -42,9 +42,8 @@ export class DeployInitializerController implements IController {
 
   private noTemplate: IDeployTemplate = { label: 'None', serverGroup: null, cluster: null };
 
-  constructor(private providerServiceDelegate: ProviderServiceDelegate) {
-    'ngInject';
-  }
+  public static $inject = ['providerServiceDelegate'];
+  constructor(private providerServiceDelegate: ProviderServiceDelegate) {}
 
   public $onInit(): void {
     const { viewState } = this.command;
@@ -90,6 +89,7 @@ export class DeployInitializerController implements IController {
     viewState.submitButtonLabel = 'Add';
     viewState.hideClusterNamePreview = baseCommand.viewState.hideClusterNamePreview || false;
     viewState.templatingEnabled = true;
+    viewState.imageSourceText = baseCommand.viewState.imageSourceText;
     Object.assign(command, baseCommand.viewState.overrides || {});
     Object.assign(baseCommand, command);
   }

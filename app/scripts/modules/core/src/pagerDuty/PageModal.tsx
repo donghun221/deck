@@ -1,19 +1,13 @@
-import { IDeferred } from 'angular';
-import { IModalServiceInstance } from 'angular-ui-bootstrap';
 import * as React from 'react';
 import { Button, Modal } from 'react-bootstrap';
 import { get } from 'lodash';
-import { $q } from 'ngimport';
 
-import {
-  Application,
-  IPagerDutyService,
-  NgReact,
-  PagerDutyWriter,
-  SETTINGS,
-  SubmitButton,
-  TaskMonitor,
-} from '@spinnaker/core';
+import { Application, ApplicationModelBuilder } from 'core/application';
+import { IPagerDutyService, PagerDutyWriter } from 'core/pagerDuty';
+import { NgReact } from 'core/reactShims';
+import { SETTINGS } from 'core/config';
+import { SubmitButton } from 'core/modal';
+import { TaskMonitor } from 'core/task';
 
 import { IPageButtonProps } from './PageButton';
 
@@ -34,20 +28,9 @@ export interface IPageModalState {
 }
 
 export class PageModal extends React.Component<IPageModalProps, IPageModalState> {
-  private $uibModalInstanceEmulation: IModalServiceInstance & { deferred?: IDeferred<any> };
-
   constructor(props: IPageModalProps) {
     super(props);
     this.state = this.getDefaultState(props);
-
-    const deferred = $q.defer();
-    const promise = deferred.promise;
-    this.$uibModalInstanceEmulation = {
-      result: promise,
-      close: () => this.close(),
-      dismiss: () => this.close(),
-    } as IModalServiceInstance;
-    Object.assign(this.$uibModalInstanceEmulation, { deferred });
   }
 
   public componentWillReceiveProps(nextProps: IPageButtonProps): void {
@@ -87,17 +70,23 @@ export class PageModal extends React.Component<IPageModalProps, IPageModalState>
   };
 
   public sendPage = (): void => {
+    const { applications, services } = this.props;
+    const defaultApp = ApplicationModelBuilder.createStandaloneApplication('spinnaker');
+    const ownerApp = applications && applications.length === 1 ? applications[0] : defaultApp;
+
     const taskMonitor = new TaskMonitor({
+      application: ownerApp,
       title: `Sending page to ${this.state.pageCount} policies`,
-      modalInstance: this.$uibModalInstanceEmulation,
+      modalInstance: TaskMonitor.modalInstanceEmulation(() => this.close()),
       onTaskComplete: () => this.props.closeCallback(true),
     });
 
     const submitMethod = () => {
-      const { applications, services } = this.props;
       const { subject, details } = this.state;
 
-      return PagerDutyWriter.sendPage(applications, services.map(s => s.integration_key), subject, { details });
+      return PagerDutyWriter.sendPage(applications, services.map(s => s.integration_key), subject, ownerApp, {
+        details,
+      });
     };
 
     taskMonitor.submit(submitMethod);

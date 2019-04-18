@@ -1,19 +1,18 @@
 import * as React from 'react';
 import { cloneDeep, get } from 'lodash';
-import { FormikErrors, FormikValues } from 'formik';
-import { IDeferred, IPromise } from 'angular';
-import { IModalServiceInstance } from 'angular-ui-bootstrap';
-import { $q } from 'ngimport';
+import { IPromise } from 'angular';
 
 import {
   AccountService,
+  FirewallLabels,
+  ILoadBalancerModalProps,
   LoadBalancerWriter,
   ReactInjector,
+  ReactModal,
   TaskMonitor,
   WizardModal,
+  WizardPage,
   noop,
-  ReactModal,
-  ILoadBalancerModalProps,
 } from '@spinnaker/core';
 
 import { AWSProviderSettings } from 'amazon/aws.settings';
@@ -21,6 +20,7 @@ import { IAmazonApplicationLoadBalancer, IAmazonApplicationLoadBalancerUpsertCom
 import { AwsReactInjector } from 'amazon/reactShims';
 
 import { ALBListeners } from './ALBListeners';
+import { ALBAdvancedSettings } from './ALBAdvancedSettings';
 import { TargetGroups } from './TargetGroups';
 import { SecurityGroups } from '../common/SecurityGroups';
 import { LoadBalancerLocation } from '../common/LoadBalancerLocation';
@@ -38,9 +38,6 @@ export interface ICreateApplicationLoadBalancerState {
   taskMonitor: TaskMonitor;
 }
 
-type ApplicationLoadBalancerModal = new () => WizardModal<IAmazonApplicationLoadBalancerUpsertCommand>;
-const ApplicationLoadBalancerModal = WizardModal as ApplicationLoadBalancerModal;
-
 export class CreateApplicationLoadBalancer extends React.Component<
   ICreateApplicationLoadBalancerProps,
   ICreateApplicationLoadBalancerState
@@ -50,9 +47,9 @@ export class CreateApplicationLoadBalancer extends React.Component<
     dismissModal: noop,
   };
 
+  private _isUnmounted = false;
   private refreshUnsubscribe: () => void;
   private certificateTypes = get(AWSProviderSettings, 'loadBalancers.certificateTypes', ['iam', 'acm']);
-  private $uibModalInstanceEmulation: IModalServiceInstance & { deferred?: IDeferred<any> };
 
   public static show(props: ICreateApplicationLoadBalancerProps): Promise<IAmazonApplicationLoadBalancerUpsertCommand> {
     const modalProps = { dialogClassName: 'wizard-modal modal-lg' };
@@ -62,7 +59,9 @@ export class CreateApplicationLoadBalancer extends React.Component<
   constructor(props: ICreateApplicationLoadBalancerProps) {
     super(props);
 
-    const loadBalancerCommand = props.loadBalancer
+    const loadBalancerCommand = props.command
+      ? (props.command as IAmazonApplicationLoadBalancerUpsertCommand) // ejecting from a wizard
+      : props.loadBalancer
       ? AwsReactInjector.awsLoadBalancerTransformer.convertApplicationLoadBalancerForEditing(props.loadBalancer)
       : AwsReactInjector.awsLoadBalancerTransformer.constructNewApplicationLoadBalancerTemplate(props.app);
 
@@ -72,15 +71,6 @@ export class CreateApplicationLoadBalancer extends React.Component<
       loadBalancerCommand,
       taskMonitor: null,
     };
-
-    const deferred = $q.defer();
-    const promise = deferred.promise;
-    this.$uibModalInstanceEmulation = {
-      result: promise,
-      close: () => this.props.dismissModal(),
-      dismiss: () => this.props.dismissModal(),
-    } as IModalServiceInstance;
-    Object.assign(this.$uibModalInstanceEmulation, { deferred });
   }
 
   protected certificateIdAsARN(
@@ -171,6 +161,10 @@ export class CreateApplicationLoadBalancer extends React.Component<
   }
 
   protected onApplicationRefresh(values: IAmazonApplicationLoadBalancerUpsertCommand): void {
+    if (this._isUnmounted) {
+      return;
+    }
+
     this.refreshUnsubscribe = undefined;
     this.props.dismissModal();
     this.setState({ taskMonitor: undefined });
@@ -190,6 +184,7 @@ export class CreateApplicationLoadBalancer extends React.Component<
   }
 
   public componentWillUnmount(): void {
+    this._isUnmounted = true;
     if (this.refreshUnsubscribe) {
       this.refreshUnsubscribe();
     }
@@ -234,7 +229,7 @@ export class CreateApplicationLoadBalancer extends React.Component<
       const taskMonitor = new TaskMonitor({
         application: app,
         title: `${isNew ? 'Creating' : 'Updating'} your load balancer`,
-        modalInstance: this.$uibModalInstanceEmulation,
+        modalInstance: TaskMonitor.modalInstanceEmulation(() => this.props.dismissModal()),
         onTaskComplete: () => this.onTaskComplete(loadBalancerCommandFormatted),
       });
 
@@ -249,25 +244,9 @@ export class CreateApplicationLoadBalancer extends React.Component<
     }
   };
 
-  private validate = (values: FormikValues): FormikErrors<IAmazonApplicationLoadBalancerUpsertCommand> => {
-    this.setState({ includeSecurityGroups: !!values.vpcId });
-    const errors = {} as FormikErrors<IAmazonApplicationLoadBalancerUpsertCommand>;
-    return errors;
-  };
-
   public render() {
     const { app, dismissModal, forPipelineConfig, loadBalancer } = this.props;
-    const { includeSecurityGroups, isNew, loadBalancerCommand, taskMonitor } = this.state;
-
-    const hideSections = new Set<string>();
-
-    if (!isNew && !forPipelineConfig) {
-      hideSections.add(LoadBalancerLocation.label);
-    }
-
-    if (!includeSecurityGroups) {
-      hideSections.add(SecurityGroups.label);
-    }
+    const { isNew, loadBalancerCommand, taskMonitor } = this.state;
 
     let heading = forPipelineConfig ? 'Configure Application Load Balancer' : 'Create New Application Load Balancer';
     if (!isNew) {
@@ -275,26 +254,74 @@ export class CreateApplicationLoadBalancer extends React.Component<
     }
 
     return (
-      <ApplicationLoadBalancerModal
+      <WizardModal<IAmazonApplicationLoadBalancerUpsertCommand>
         heading={heading}
         initialValues={loadBalancerCommand}
         taskMonitor={taskMonitor}
         dismissModal={dismissModal}
         closeModal={this.submit}
         submitButtonLabel={forPipelineConfig ? (isNew ? 'Add' : 'Done') : isNew ? 'Create' : 'Update'}
-        validate={this.validate}
-        hideSections={hideSections}
-      >
-        <LoadBalancerLocation
-          app={app}
-          isNew={isNew}
-          forPipelineConfig={forPipelineConfig}
-          loadBalancer={loadBalancer}
-        />
-        <SecurityGroups done={true} />
-        <TargetGroups app={app} isNew={isNew} loadBalancer={loadBalancer} done={true} />
-        <ALBListeners app={app} done={true} />
-      </ApplicationLoadBalancerModal>
+        render={({ formik, nextIdx, wizard }) => {
+          const showLocationSection = isNew || forPipelineConfig;
+          const showSecurityGroups = !!formik.values.vpcId;
+
+          return (
+            <>
+              {showLocationSection && (
+                <WizardPage
+                  label="Location"
+                  wizard={wizard}
+                  order={nextIdx()}
+                  render={({ innerRef }) => (
+                    <LoadBalancerLocation
+                      app={app}
+                      forPipelineConfig={forPipelineConfig}
+                      formik={formik}
+                      isNew={isNew}
+                      loadBalancer={loadBalancer}
+                      ref={innerRef}
+                    />
+                  )}
+                />
+              )}
+
+              {showSecurityGroups && (
+                <WizardPage
+                  label={FirewallLabels.get('Firewalls')}
+                  wizard={wizard}
+                  order={nextIdx()}
+                  render={({ innerRef, onLoadingChanged }) => (
+                    <SecurityGroups formik={formik} isNew={isNew} onLoadingChanged={onLoadingChanged} ref={innerRef} />
+                  )}
+                />
+              )}
+
+              <WizardPage
+                label="Target Groups"
+                wizard={wizard}
+                order={nextIdx()}
+                render={({ innerRef }) => (
+                  <TargetGroups ref={innerRef} app={app} formik={formik} isNew={isNew} loadBalancer={loadBalancer} />
+                )}
+              />
+
+              <WizardPage
+                label="Listeners"
+                wizard={wizard}
+                order={nextIdx()}
+                render={({ innerRef }) => <ALBListeners ref={innerRef} app={app} formik={formik} />}
+              />
+
+              <WizardPage
+                label="Advanced Settings"
+                wizard={wizard}
+                order={nextIdx()}
+                render={({ innerRef }) => <ALBAdvancedSettings ref={innerRef} />}
+              />
+            </>
+          );
+        }}
+      />
     );
   }
 }

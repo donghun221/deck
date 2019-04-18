@@ -118,14 +118,15 @@ export class ServerGroupDetails extends React.Component<IServerGroupDetailsProps
             </div>
           </div>
         )}
-        {serverGroup &&
-          serverGroup.isDisabled && (
-            <div className="band band-info">Disabled {timestamp(serverGroup.disabledDate)}</div>
-          )}
+        {serverGroup && serverGroup.isDisabled && (
+          <div className="band band-info">Disabled {timestamp(serverGroup.disabledDate)}</div>
+        )}
         {!loading && (
           <div className="content">
             <RunningTasks serverGroup={serverGroup} application={app} />
-            {sections.map((Section, index) => <Section key={index} app={app} serverGroup={serverGroup} />)}
+            {sections.map((Section, index) => (
+              <Section key={index} app={app} serverGroup={serverGroup} />
+            ))}
           </div>
         )}
       </div>

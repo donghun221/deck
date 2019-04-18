@@ -1,6 +1,6 @@
 import { module } from 'angular';
 
-import { IServerGroup } from '@spinnaker/core';
+import { IServerGroup, IArtifactAccountPair } from '@spinnaker/core';
 
 import { GitCredentialType, IAppengineGitTrigger, IAppengineJenkinsTrigger } from 'appengine/domain/index';
 import { IAppengineServerGroupCommand } from './configure/serverGroupCommandBuilder.service';
@@ -17,6 +17,7 @@ export class AppengineDeployDescription {
   public branch: string;
   public configFilepaths: string[];
   public configFiles: string[];
+  public configArtifacts: IArtifactAccountPair[];
   public applicationDirectoryRoot: string;
   public promote?: boolean;
   public stopPreviousVersion?: boolean;
@@ -34,6 +35,7 @@ export class AppengineDeployDescription {
   public sourceType: string;
   public storageAccountName?: string;
   public containerImageUrl?: string;
+  public suppressVersionString?: boolean;
 
   constructor(command: IAppengineServerGroupCommand) {
     this.credentials = command.credentials;
@@ -55,6 +57,7 @@ export class AppengineDeployDescription {
     this.trigger = command.trigger;
     this.gitCredentialType = command.gitCredentialType;
     this.configFiles = command.configFiles;
+    this.configArtifacts = command.configArtifacts.filter(a => !!a.id);
     this.applicationDirectoryRoot = command.applicationDirectoryRoot;
     this.interestingHealthProviderNames = command.interestingHealthProviderNames || [];
     this.expectedArtifactId = command.expectedArtifactId;
@@ -62,13 +65,13 @@ export class AppengineDeployDescription {
     this.sourceType = command.sourceType;
     this.storageAccountName = command.storageAccountName;
     this.containerImageUrl = command.containerImageUrl;
+    this.suppressVersionString = command.suppressVersionString;
   }
 }
 
 class AppengineServerGroupTransformer {
-  constructor(private $q: ng.IQService) {
-    'ngInject';
-  }
+  public static $inject = ['$q'];
+  constructor(private $q: ng.IQService) {}
 
   public normalizeServerGroup(serverGroup: IServerGroup): ng.IPromise<IServerGroup> {
     return this.$q.resolve(serverGroup);

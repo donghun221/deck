@@ -6,14 +6,19 @@ import { IServerGroup, IInstanceCounts } from '@spinnaker/core';
 import { IKubernetesLoadBalancer } from './details/IKubernetesLoadBalancer';
 
 class KubernetesV2LoadBalancerTransformer {
-  constructor(private $q: IQService) {
-    'ngInject';
-  }
+  public static $inject = ['$q'];
+  constructor(private $q: IQService) {}
 
   public normalizeLoadBalancer(loadBalancer: IKubernetesLoadBalancer): IPromise<IKubernetesLoadBalancer> {
     loadBalancer.provider = loadBalancer.type;
     loadBalancer.instances = [];
     loadBalancer.instanceCounts = this.buildInstanceCounts(loadBalancer.serverGroups);
+    (loadBalancer.serverGroups || []).forEach(serverGroup => {
+      serverGroup.cloudProvider = loadBalancer.provider;
+      (serverGroup.instances || []).forEach(instance => {
+        instance.cloudProvider = loadBalancer.provider;
+      });
+    });
     return this.$q.resolve(loadBalancer);
   }
 

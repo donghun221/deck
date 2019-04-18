@@ -9,6 +9,26 @@ import {
 import { KubernetesManifestService } from 'kubernetes/v2/manifest/manifest.service';
 import { ManifestStatus } from './ManifestStatus';
 
+// from https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.12/
+const BUILT_IN_GROUPS = [
+  '',
+  'core',
+  'batch',
+  'apps',
+  'extensions',
+  'storage.k8s.io',
+  'apiextensions.k8s.io',
+  'apiregistration.k8s.io',
+  'policy',
+  'scheduling.k8s.io',
+  'settings.k8s.io',
+  'authorization.k8s.io',
+  'authentication.k8s.io',
+  'rbac.authorization.k8s.io',
+  'certifcates.k8s.io',
+  'networking.k8s.io',
+];
+
 export interface IManifestSubscription {
   id: string;
   unsubscribe: () => void;
@@ -17,6 +37,7 @@ export interface IManifestSubscription {
 
 interface IStageManifest {
   kind: string;
+  apiVersion: string;
   metadata: {
     namespace: string;
     name: string;
@@ -25,6 +46,7 @@ interface IStageManifest {
 
 export interface IDeployStatusState {
   subscriptions: IManifestSubscription[];
+  manifestIds: string[];
 }
 
 export class DeployStatus extends React.Component<IExecutionDetailsSectionProps, IDeployStatusState> {
@@ -32,32 +54,52 @@ export class DeployStatus extends React.Component<IExecutionDetailsSectionProps,
 
   constructor(props: IExecutionDetailsSectionProps) {
     super(props);
-    this.state = { subscriptions: [] };
+    this.state = { subscriptions: [], manifestIds: [] };
   }
 
   public componentDidMount() {
-    this.buildSubscriptions();
-  }
-
-  public componentDidUpdate() {
-    this.buildSubscriptions();
-  }
-
-  private buildSubscriptions() {
-    const subscriptions: IManifestSubscription[] = [];
-    const stageManifests = this.getStageManifests();
-    stageManifests.forEach(m => {
-      const subscription = this.subscribeToManifest(m);
-      if (subscription != null) {
-        subscriptions.push(subscription);
-      }
-    });
-    if (subscriptions.length > 0) {
-      this.setState({ subscriptions });
-    }
+    this.componentDidUpdate(this.props, this.state);
   }
 
   public componentWillUnmount() {
+    this.unsubscribeAll();
+  }
+
+  public componentDidUpdate(_prevProps: IExecutionDetailsSectionProps, prevState: IDeployStatusState) {
+    const manifests: IStageManifest[] = get(this.props.stage, ['context', 'outputs.manifests'], []).filter(m => !!m);
+    const manifestIds = manifests.map(m => this.manifestIdentifier(m)).sort();
+    if (prevState.manifestIds.join('') !== manifestIds.join('')) {
+      this.unsubscribeAll();
+      const subscriptions = manifests.map(manifest => {
+        const id = this.manifestIdentifier(manifest);
+        return {
+          id,
+          unsubscribe: this.subscribeToManifestUpdates(id, manifest),
+          manifest: this.stageManifestToIManifest(manifest, this.props.stage.context.account),
+        };
+      });
+      this.setState({ subscriptions, manifestIds });
+    }
+  }
+
+  private subscribeToManifestUpdates(id: string, manifest: IStageManifest): () => void {
+    const params = {
+      account: this.props.stage.context.account,
+      name: this.scopedKind(manifest) + ' ' + manifest.metadata.name,
+      location: manifest.metadata.namespace == null ? '_' : manifest.metadata.namespace,
+    };
+    return KubernetesManifestService.subscribe(this.props.application, params, (updated: IManifest) => {
+      const idx = this.state.subscriptions.findIndex(sub => sub.id === id);
+      if (idx !== -1) {
+        const subscription = { ...this.state.subscriptions[idx], manifest: updated };
+        const subscriptions = [...this.state.subscriptions];
+        subscriptions[idx] = subscription;
+        this.setState({ subscriptions });
+      }
+    });
+  }
+
+  private unsubscribeAll() {
     this.state.subscriptions.forEach(({ unsubscribe }) => unsubscribe());
   }
 
@@ -66,20 +108,31 @@ export class DeployStatus extends React.Component<IExecutionDetailsSectionProps,
     // manifest.metadata.namespace doesn't exist if it's a namespace being deployed
     const namespace = (manifest.metadata.namespace || '_').toLowerCase();
     const name = manifest.metadata.name.toLowerCase();
-    return `${namespace} ${kind} ${name}`;
+    const apiVersion = (manifest.apiVersion || '_').toLowerCase();
+    // assuming this identifier is opaque and not parsed anywhere. Including the
+    // apiVersion will prevent collisions with CRD kinds without having any visible
+    // effect elsewhere
+    return `${namespace} ${kind} ${apiVersion} ${name}`;
   }
 
-  private findSubscriptionIndex({ id }: { id: string }): number {
-    return this.state.subscriptions.findIndex(sub => sub.id === id);
+  private apiGroup(manifest: IStageManifest): string {
+    const parts = (manifest.apiVersion || '_').split('/');
+    if (parts.length < 2) {
+      return '';
+    }
+    return parts[0];
   }
 
-  private manifestFullName(manifest: any): string {
-    return upperFirst(manifest.kind) + ' ' + manifest.metadata.name;
+  private isCRDGroup(manifest: IStageManifest): boolean {
+    return !BUILT_IN_GROUPS.includes(this.apiGroup(manifest));
   }
 
-  private getStageManifests(): IStageManifest[] {
-    const manifests: any[] = get(this.props, ['stage', 'context', 'outputs.manifests'], []);
-    return manifests.filter(m => !!m);
+  private scopedKind(manifest: IStageManifest): string {
+    if (this.isCRDGroup(manifest)) {
+      return upperFirst(manifest.kind) + '.' + this.apiGroup(manifest);
+    }
+
+    return upperFirst(manifest.kind);
   }
 
   private stageManifestToIManifest(manifest: IStageManifest, account: string): IManifest {
@@ -96,42 +149,8 @@ export class DeployStatus extends React.Component<IExecutionDetailsSectionProps,
     };
   }
 
-  private subscribeToManifest(manifest: IStageManifest): IManifestSubscription {
-    const { application, stage } = this.props;
-    const { account } = stage.context;
-    const { namespace: location } = manifest.metadata;
-    const name = this.manifestFullName(manifest);
-    const params = { account, location, name };
-    const id = this.manifestIdentifier(manifest);
-    if (location == null) {
-      params.location = '_';
-    }
-    if (this.findSubscriptionIndex({ id }) !== -1) {
-      return null;
-    }
-    const unsubscribe = KubernetesManifestService.subscribe(application, params, (updatedManifest: IManifest) => {
-      this.saveManifestSubscription({ id, unsubscribe, manifest: updatedManifest });
-    });
-    return {
-      id,
-      unsubscribe,
-      manifest: this.stageManifestToIManifest(manifest, account),
-    };
-  }
-
-  private saveManifestSubscription(subscription: IManifestSubscription) {
-    const idx = this.findSubscriptionIndex(subscription);
-    const subscriptions = [...this.state.subscriptions];
-    if (idx === -1) {
-      subscriptions.push(subscription);
-    } else {
-      subscriptions[idx] = subscription;
-    }
-    this.setState({ subscriptions });
-  }
-
   public render() {
-    const { name: sectionName, current: currentSection, application, stage } = this.props;
+    const { name: sectionName, current: currentSection, stage } = this.props;
     const manifests: IManifest[] = this.state.subscriptions.filter(sub => !!sub.manifest).map(sub => sub.manifest);
     return (
       <ExecutionDetailsSection name={sectionName} current={currentSection}>
@@ -142,7 +161,7 @@ export class DeployStatus extends React.Component<IExecutionDetailsSectionProps,
               <div className="well alert alert-info">
                 {manifests.map(manifest => {
                   const uid = manifest.manifest.metadata.uid || this.manifestIdentifier(manifest.manifest);
-                  return <ManifestStatus key={uid} manifest={manifest} application={application} stage={stage} />;
+                  return <ManifestStatus key={uid} manifest={manifest} stage={stage} />;
                 })}
               </div>
             </div>

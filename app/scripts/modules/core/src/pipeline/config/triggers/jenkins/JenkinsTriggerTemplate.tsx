@@ -64,11 +64,13 @@ export class JenkinsTriggerTemplate extends React.Component<
 
   private updateSelectedBuild = (item: any) => {
     this.props.command.extraFields.buildNumber = item.number;
+    this.props.command.triggerInvalid = false;
     this.setState({ selectedBuild: item.number });
   };
 
   private initialize = () => {
     const { command } = this.props;
+    command.triggerInvalid = true;
     const trigger = command.trigger as IBuildTrigger;
 
     // These fields will be added to the trigger when the form is submitted
@@ -109,8 +111,7 @@ export class JenkinsTriggerTemplate extends React.Component<
     return (
       <span style={{ fontSize: '13px' }}>
         <strong>Build {build.number} </strong>
-        {buildDisplayName(build as IBuildInfo)}
-        ({timestamp(build.timestamp)})
+        {buildDisplayName(build as IBuildInfo)}({timestamp(build.timestamp)})
       </span>
     );
   };
@@ -120,9 +121,6 @@ export class JenkinsTriggerTemplate extends React.Component<
 
     return (
       <div className="form-group">
-        {/* Prevents form from being submitted before builds have had a chance to load */}
-        {buildsLoading && <input type="hidden" required={true} value={selectedBuild} />}
-
         <label className="col-md-4 sm-label-right">Build</label>
         {buildsLoading && (
           <div className="col-md-6">

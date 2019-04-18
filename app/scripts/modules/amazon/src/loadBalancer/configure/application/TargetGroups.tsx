@@ -6,17 +6,17 @@ import { Observable, Subject } from 'rxjs';
 import {
   Application,
   HelpField,
-  IWizardPageProps,
+  IWizardPageComponent,
   SpInput,
   ValidationMessage,
   spelNumberCheck,
-  wizardPage,
 } from '@spinnaker/core';
 
 import { IAmazonApplicationLoadBalancer, IAmazonApplicationLoadBalancerUpsertCommand } from 'amazon/domain';
 
 export interface ITargetGroupsProps {
   app: Application;
+  formik: FormikProps<IAmazonApplicationLoadBalancerUpsertCommand>;
   isNew: boolean;
   loadBalancer: IAmazonApplicationLoadBalancer;
 }
@@ -26,20 +26,16 @@ export interface ITargetGroupsState {
   oldTargetGroupCount: number;
 }
 
-class TargetGroupsImpl extends React.Component<
-  ITargetGroupsProps & IWizardPageProps & FormikProps<IAmazonApplicationLoadBalancerUpsertCommand>,
-  ITargetGroupsState
-> {
-  public static LABEL = 'Target Groups';
-
+export class TargetGroups extends React.Component<ITargetGroupsProps, ITargetGroupsState>
+  implements IWizardPageComponent<IAmazonApplicationLoadBalancerUpsertCommand> {
   public protocols = ['HTTP', 'HTTPS'];
   public targetTypes = ['instance', 'ip'];
   private destroy$ = new Subject();
 
-  constructor(props: ITargetGroupsProps & IWizardPageProps & FormikProps<IAmazonApplicationLoadBalancerUpsertCommand>) {
+  constructor(props: ITargetGroupsProps) {
     super(props);
 
-    const oldTargetGroupCount = !props.isNew ? props.initialValues.targetGroups.length : 0;
+    const oldTargetGroupCount = !props.isNew ? props.formik.initialValues.targetGroups.length : 0;
     this.state = {
       existingTargetGroupNames: {},
       oldTargetGroupCount,
@@ -49,7 +45,7 @@ class TargetGroupsImpl extends React.Component<
   public validate(
     values: IAmazonApplicationLoadBalancerUpsertCommand,
   ): FormikErrors<IAmazonApplicationLoadBalancerUpsertCommand> {
-    const errors = {} as FormikErrors<IAmazonApplicationLoadBalancerUpsertCommand>;
+    const errors = {} as any;
 
     let hasErrors = false;
     const duplicateTargetGroups = uniq(
@@ -76,12 +72,19 @@ class TargetGroupsImpl extends React.Component<
         tgErrors.name = 'Duplicate target group name in this load balancer.';
       }
 
-      ['port', 'healthCheckInterval', 'healthCheckPort', 'healthyThreshold', 'unhealthyThreshold'].forEach(key => {
+      ['port', 'healthCheckInterval', 'healthyThreshold', 'unhealthyThreshold'].forEach(key => {
         const err = spelNumberCheck(targetGroup[key]);
         if (err) {
           tgErrors[key] = err;
         }
       });
+
+      if (targetGroup.healthCheckPort !== 'traffic-port') {
+        const err = spelNumberCheck(targetGroup.healthCheckPort);
+        if (err) {
+          tgErrors.healthCheckPort = err;
+        }
+      }
 
       [
         'name',
@@ -115,9 +118,7 @@ class TargetGroupsImpl extends React.Component<
     return name.replace(`${this.props.app.name}-`, '');
   }
 
-  protected updateLoadBalancerNames(
-    props: ITargetGroupsProps & IWizardPageProps & FormikProps<IAmazonApplicationLoadBalancerUpsertCommand>,
-  ): void {
+  protected updateLoadBalancerNames(props: ITargetGroupsProps): void {
     const { app, loadBalancer } = props;
 
     const targetGroupsByAccountAndRegion: { [account: string]: { [region: string]: string[] } } = {};
@@ -125,7 +126,7 @@ class TargetGroupsImpl extends React.Component<
       .takeUntil(this.destroy$)
       .subscribe(() => {
         app.getDataSource('loadBalancers').data.forEach((lb: IAmazonApplicationLoadBalancer) => {
-          if (lb.loadBalancerType === 'application') {
+          if (lb.loadBalancerType !== 'classic') {
             if (!loadBalancer || lb.name !== loadBalancer.name) {
               lb.targetGroups.forEach(targetGroup => {
                 targetGroupsByAccountAndRegion[lb.account] = targetGroupsByAccountAndRegion[lb.account] || {};
@@ -137,19 +138,21 @@ class TargetGroupsImpl extends React.Component<
           }
         });
 
-        this.setState({ existingTargetGroupNames: targetGroupsByAccountAndRegion }, this.props.revalidate);
+        this.setState({ existingTargetGroupNames: targetGroupsByAccountAndRegion }, () =>
+          this.props.formik.validateForm(),
+        );
       });
   }
 
   private targetGroupFieldChanged(index: number, field: string, value: string | boolean): void {
-    const { setFieldValue, values } = this.props;
+    const { setFieldValue, values } = this.props.formik;
     const targetGroup = values.targetGroups[index];
     set(targetGroup, field, value);
     setFieldValue('targetGroups', values.targetGroups);
   }
 
   private addTargetGroup = (): void => {
-    const { setFieldValue, values } = this.props;
+    const { setFieldValue, values } = this.props.formik;
     const tgLength = values.targetGroups.length;
     values.targetGroups.push({
       name: `targetgroup${tgLength ? `${tgLength}` : ''}`,
@@ -174,7 +177,7 @@ class TargetGroupsImpl extends React.Component<
   };
 
   private removeTargetGroup(index: number): void {
-    const { setFieldValue, values } = this.props;
+    const { setFieldValue, values } = this.props.formik;
     const { oldTargetGroupCount } = this.state;
     values.targetGroups.splice(index, 1);
 
@@ -194,7 +197,8 @@ class TargetGroupsImpl extends React.Component<
   }
 
   public render() {
-    const { app, errors, values } = this.props;
+    const { app } = this.props;
+    const { errors, values } = this.props.formik;
     const { oldTargetGroupCount } = this.state;
 
     const ProtocolOptions = this.protocols.map(p => <option key={p}>{p}</option>);
@@ -301,9 +305,28 @@ class TargetGroupsImpl extends React.Component<
                           </span>
                           <span className="wizard-pod-content">
                             <label>Port </label>
+                            <HelpField id="aws.targetGroup.attributes.healthCheckPort.trafficPort" />{' '}
+                            <select
+                              className="form-control input-sm inline-number"
+                              style={{ width: '90px' }}
+                              value={targetGroup.healthCheckPort === 'traffic-port' ? 'traffic-port' : 'manual'}
+                              onChange={event =>
+                                this.targetGroupFieldChanged(
+                                  index,
+                                  'healthCheckPort',
+                                  event.target.value === 'traffic-port' ? 'traffic-port' : '',
+                                )
+                              }
+                            >
+                              <option value="traffic-port">Traffic Port</option>
+                              <option value="manual">Manual</option>
+                            </select>{' '}
                             <SpInput
                               className="form-control input-sm inline-number"
                               error={tgErrors.healthCheckPort}
+                              style={{
+                                visibility: targetGroup.healthCheckPort === 'traffic-port' ? 'hidden' : 'inherit',
+                              }}
                               name="healthCheckPort"
                               required={true}
                               value={targetGroup.healthCheckPort}
@@ -466,5 +489,3 @@ class TargetGroupsImpl extends React.Component<
     );
   }
 }
-
-export const TargetGroups = wizardPage<ITargetGroupsProps>(TargetGroupsImpl);

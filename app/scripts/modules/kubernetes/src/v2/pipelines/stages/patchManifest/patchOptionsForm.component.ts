@@ -16,12 +16,11 @@ class KubernetesPatchManifestOptionsFormCtrl implements IController {
   public mergeStrategies = MergeStrategy;
 }
 
-class KubernetesPatchManifestOptionsFormComponent implements IComponentOptions {
-  public bindings: any = { options: '=' };
-  public controller: any = KubernetesPatchManifestOptionsFormCtrl;
-  public controllerAs = 'ctrl';
-
-  public template = `
+const kubernetesPatchManifestOptionsFormComponent: IComponentOptions = {
+  bindings: { options: '=', onChange: '<' },
+  controller: KubernetesPatchManifestOptionsFormCtrl,
+  controllerAs: 'ctrl',
+  template: `
     <div class="form-horizontal">
       <div class="form-group form-inline">
         <div class="col-md-3 sm-label-right">
@@ -42,7 +41,9 @@ class KubernetesPatchManifestOptionsFormComponent implements IComponentOptions {
         </div>
         <div class="col-md-4">
           <div class="input-group">
-            <select class="form-control input-sm" ng-model="ctrl.options.mergeStrategy">
+            <select class="form-control input-sm"
+                    ng-model="ctrl.options.mergeStrategy"
+                    ng-change="ctrl.onChange()">
               <option ng-repeat="strategy in ctrl.mergeStrategies" value="{{strategy}}"
                       ng-selected="ctrl.options.mergeStrategy === strategy">
                 {{strategy}}
@@ -52,11 +53,11 @@ class KubernetesPatchManifestOptionsFormComponent implements IComponentOptions {
         </div>
       </div>
     </div>
-  `;
-}
+  `,
+};
 
 export const KUBERNETES_PATCH_MANIFEST_OPTIONS_FORM = 'spinnaker.kubernetes.v2.manifest.patch.options.component';
 module(KUBERNETES_PATCH_MANIFEST_OPTIONS_FORM, []).component(
   'kubernetesPatchManifestOptionsForm',
-  new KubernetesPatchManifestOptionsFormComponent(),
+  kubernetesPatchManifestOptionsFormComponent,
 );

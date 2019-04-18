@@ -1,4 +1,13 @@
-import { AccountService, Application, IHealth, IInstance, IServerGroup, IVpc, NameUtils } from '@spinnaker/core';
+import {
+  AccountService,
+  Application,
+  IHealth,
+  IInstance,
+  IServerGroup,
+  IVpc,
+  NameUtils,
+  SETTINGS,
+} from '@spinnaker/core';
 import { AWSProviderSettings } from 'amazon/aws.settings';
 import {
   IALBListenerCertificate,
@@ -83,6 +92,8 @@ export class AwsLoadBalancerTransformer {
     serverGroups.forEach(serverGroup => {
       serverGroup.account = serverGroup.account || container.account;
       serverGroup.region = serverGroup.region || container.region;
+      serverGroup.cloudProvider = serverGroup.cloudProvider || container.cloudProvider;
+
       if (serverGroup.detachedInstances) {
         serverGroup.detachedInstances = (serverGroup.detachedInstances as any).map((instanceId: string) => {
           return { id: instanceId } as IInstance;
@@ -121,8 +132,9 @@ export class AwsLoadBalancerTransformer {
 
       tg.serverGroups = tg.serverGroups.map(serverGroup => {
         const account = accounts.find(x => x.name === serverGroup.account);
-        const cloudProvider = serverGroup.cloudProvider || (account && account.cloudProvider);
+        const cloudProvider = (account && account.cloudProvider) || serverGroup.cloudProvider;
 
+        serverGroup.cloudProvider = cloudProvider;
         serverGroup.instances.forEach(instance => {
           instance.cloudProvider = cloudProvider;
           instance.provider = cloudProvider;
@@ -200,6 +212,7 @@ export class AwsLoadBalancerTransformer {
       healthCheckProtocol: loadBalancer.healthCheckProtocol,
       healthCheckPort: loadBalancer.healthCheckPort,
       healthCheckPath: loadBalancer.healthCheckPath,
+      idleTimeout: loadBalancer.idleTimeout || 60,
       subnetType: loadBalancer.subnetType,
     };
 
@@ -209,23 +222,25 @@ export class AwsLoadBalancerTransformer {
       toEdit.vpcId = elb.vpcid || elb.vpcId;
 
       if (elb.listenerDescriptions) {
-        toEdit.listeners = elb.listenerDescriptions.map((description: any): IClassicListenerDescription => {
-          const listener = description.listener;
-          if (listener.sslcertificateId) {
-            const splitCertificateId = listener.sslcertificateId.split('/');
-            listener.sslcertificateId = splitCertificateId[1];
-            listener.sslCertificateType = splitCertificateId[0].split(':')[2];
-          }
-          return {
-            internalProtocol: listener.instanceProtocol,
-            internalPort: listener.instancePort,
-            externalProtocol: listener.protocol,
-            externalPort: listener.loadBalancerPort,
-            sslCertificateId: listener.sslcertificateId,
-            sslCertificateName: listener.sslcertificateId,
-            sslCertificateType: listener.sslCertificateType,
-          };
-        });
+        toEdit.listeners = elb.listenerDescriptions.map(
+          (description: any): IClassicListenerDescription => {
+            const listener = description.listener;
+            if (listener.sslcertificateId) {
+              const splitCertificateId = listener.sslcertificateId.split('/');
+              listener.sslcertificateId = splitCertificateId[1];
+              listener.sslCertificateType = splitCertificateId[0].split(':')[2];
+            }
+            return {
+              internalProtocol: listener.instanceProtocol,
+              internalPort: listener.instancePort,
+              externalProtocol: listener.protocol,
+              externalPort: listener.loadBalancerPort,
+              sslCertificateId: listener.sslcertificateId,
+              sslCertificateName: listener.sslcertificateId,
+              sslCertificateType: listener.sslCertificateType,
+            };
+          },
+        );
       }
 
       if (elb.healthCheck && elb.healthCheck.target) {
@@ -275,6 +290,8 @@ export class AwsLoadBalancerTransformer {
       securityGroups: [],
       subnetType: loadBalancer.subnetType,
       vpcId: undefined,
+      idleTimeout: loadBalancer.idleTimeout || 60,
+      deletionProtection: loadBalancer.deletionProtection || false,
     };
 
     if (loadBalancer.elb) {
@@ -302,6 +319,7 @@ export class AwsLoadBalancerTransformer {
             if (action.targetGroupName) {
               action.targetGroupName = action.targetGroupName.replace(`${applicationName}-`, '');
             }
+            action.redirectActionConfig = action.redirectConfig;
           });
 
           // Remove the default rule because it already exists in defaultActions
@@ -311,6 +329,7 @@ export class AwsLoadBalancerTransformer {
               if (action.targetGroupName) {
                 action.targetGroupName = action.targetGroupName.replace(`${applicationName}-`, '');
               }
+              action.redirectActionConfig = action.redirectConfig;
             });
             rule.conditions = rule.conditions || [];
           });
@@ -377,6 +396,7 @@ export class AwsLoadBalancerTransformer {
       securityGroups: [],
       subnetType: loadBalancer.subnetType,
       vpcId: undefined,
+      deletionProtection: loadBalancer.deletionProtection,
     };
 
     if (loadBalancer.elb) {
@@ -445,6 +465,7 @@ export class AwsLoadBalancerTransformer {
             healthCheckInterval: targetGroup.healthCheckIntervalSeconds,
             healthyThreshold: targetGroup.healthyThresholdCount,
             unhealthyThreshold: targetGroup.unhealthyThresholdCount,
+            healthCheckPath: targetGroup.healthCheckPath,
             attributes: {
               deregistrationDelay: Number(targetGroup.attributes['deregistration_delay.timeout_seconds']),
             },
@@ -461,7 +482,7 @@ export class AwsLoadBalancerTransformer {
       defaultSubnetType = AWSProviderSettings.defaults.subnetType;
     return {
       availabilityZones: undefined,
-      name: undefined,
+      name: '',
       stack: '',
       detail: '',
       loadBalancerType: 'classic',
@@ -479,6 +500,7 @@ export class AwsLoadBalancerTransformer {
       healthInterval: 10,
       healthyThreshold: 10,
       unhealthyThreshold: 2,
+      idleTimeout: 60,
       regionZones: [],
       securityGroups: [],
       listeners: [
@@ -498,9 +520,10 @@ export class AwsLoadBalancerTransformer {
     const defaultCredentials = application.defaultCredentials.aws || AWSProviderSettings.defaults.account,
       defaultRegion = application.defaultRegions.aws || AWSProviderSettings.defaults.region,
       defaultSubnetType = AWSProviderSettings.defaults.subnetType,
+      defaultPort = application.attributes.instancePort || SETTINGS.defaultInstancePort,
       defaultTargetGroupName = `targetgroup`;
     return {
-      name: undefined,
+      name: '',
       availabilityZones: undefined,
       stack: '',
       detail: '',
@@ -511,14 +534,16 @@ export class AwsLoadBalancerTransformer {
       region: defaultRegion,
       vpcId: null,
       subnetType: defaultSubnetType,
+      idleTimeout: 60,
+      deletionProtection: false,
       targetGroups: [
         {
           name: defaultTargetGroupName,
           protocol: 'HTTP',
-          port: 7001,
+          port: defaultPort,
           targetType: 'instance',
           healthCheckProtocol: 'HTTP',
-          healthCheckPort: '7001',
+          healthCheckPort: 'traffic-port',
           healthCheckPath: '/healthcheck',
           healthCheckTimeout: 5,
           healthCheckInterval: 10,
@@ -557,7 +582,7 @@ export class AwsLoadBalancerTransformer {
       defaultSubnetType = AWSProviderSettings.defaults.subnetType,
       defaultTargetGroupName = `targetgroup`;
     return {
-      name: undefined,
+      name: '',
       availabilityZones: undefined,
       stack: '',
       detail: '',
@@ -568,6 +593,7 @@ export class AwsLoadBalancerTransformer {
       region: defaultRegion,
       vpcId: null,
       subnetType: defaultSubnetType,
+      deletionProtection: false,
       securityGroups: [],
       targetGroups: [
         {
@@ -576,7 +602,8 @@ export class AwsLoadBalancerTransformer {
           port: 7001,
           targetType: 'instance',
           healthCheckProtocol: 'TCP',
-          healthCheckPort: '7001',
+          healthCheckPath: '/healthcheck',
+          healthCheckPort: 'traffic-port',
           healthCheckTimeout: 5,
           healthCheckInterval: 10,
           healthyThreshold: 10,

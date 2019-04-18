@@ -1,6 +1,16 @@
-import { PipelineConfigService } from 'core/pipeline/config/services/PipelineConfigService';
-import { IPipeline, IStage, IExpectedArtifact, IExecutionContext } from 'core/domain';
-import { UUIDGenerator } from 'core/utils/uuid.service';
+import { PipelineConfigService } from 'core/pipeline';
+import { Registry } from 'core/registry';
+import {
+  IArtifact,
+  IArtifactKindConfig,
+  IArtifactSource,
+  IExecutionContext,
+  IExpectedArtifact,
+  IPipeline,
+  IStage,
+} from 'core/domain';
+import { UUIDGenerator } from 'core/utils';
+import { hri as HumanReadableIds } from 'human-readable-ids';
 
 export class ExpectedArtifactService {
   public static getExpectedArtifactsAvailableToStage(stage: IStage, pipeline: IPipeline): IExpectedArtifact[] {
@@ -33,28 +43,72 @@ export class ExpectedArtifactService {
         .reduce((array, value) => array.concat(value), []);
   }
 
-  public static createEmptyArtifact(kind: string): IExpectedArtifact {
+  public static createEmptyArtifact(): IExpectedArtifact {
     return {
       id: UUIDGenerator.generateUuid(),
       usePriorArtifact: false,
       useDefaultArtifact: false,
       matchArtifact: {
         id: UUIDGenerator.generateUuid(),
-        kind,
+        customKind: true,
       },
       defaultArtifact: {
         id: UUIDGenerator.generateUuid(),
-        kind,
+        customKind: true,
       },
+      displayName: HumanReadableIds.random(),
     };
   }
 
-  public static addNewArtifactTo(obj: any): IExpectedArtifact {
-    const artifact = ExpectedArtifactService.createEmptyArtifact('custom');
+  public static addArtifactTo(artifact: IExpectedArtifact, obj: any): IExpectedArtifact {
     if (obj.expectedArtifacts == null) {
       obj.expectedArtifacts = [];
     }
     obj.expectedArtifacts.push(artifact);
     return artifact;
+  }
+
+  public static addNewArtifactTo(obj: any): IExpectedArtifact {
+    return ExpectedArtifactService.addArtifactTo(ExpectedArtifactService.createEmptyArtifact(), obj);
+  }
+
+  public static artifactFromExpected(expected: IExpectedArtifact): IArtifact | null {
+    if (expected && expected.matchArtifact) {
+      return expected.matchArtifact;
+    } else {
+      return null;
+    }
+  }
+
+  public static sourcesForPipelineStage(
+    pipelineGetter: () => IPipeline,
+    stage: IStage,
+  ): Array<IArtifactSource<IPipeline | IStage>> {
+    type ArtifactSource = IArtifactSource<IPipeline | IStage>;
+    const sources: ArtifactSource[] = [
+      {
+        get source() {
+          return pipelineGetter();
+        },
+        label: 'Pipeline Trigger',
+      },
+    ];
+    PipelineConfigService.getAllUpstreamDependencies(pipelineGetter(), stage)
+      .filter(s => Registry.pipeline.getStageConfig(s).producesArtifacts)
+      .map(s => ({ source: s, label: 'Stage (' + s.name + ')' }))
+      .forEach(s => sources.push(s));
+    return sources;
+  }
+
+  public static getKindConfig(artifact: IArtifact, isDefault: boolean): IArtifactKindConfig {
+    if (artifact == null || artifact.customKind || artifact.kind === 'custom') {
+      return Registry.pipeline.getCustomArtifactKind();
+    }
+    const kinds = isDefault ? Registry.pipeline.getDefaultArtifactKinds() : Registry.pipeline.getMatchArtifactKinds();
+    const inferredKindConfig = kinds.find(k => k.type === artifact.type);
+    if (inferredKindConfig !== undefined) {
+      return inferredKindConfig;
+    }
+    return Registry.pipeline.getCustomArtifactKind();
   }
 }

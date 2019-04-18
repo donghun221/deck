@@ -18,10 +18,10 @@ import { ExecutionFilters } from 'core/pipeline/filter/ExecutionFilters';
 import { ExecutionFilterService } from 'core/pipeline/filter/executionFilter.service';
 import { ExecutionGroups } from './executionGroup/ExecutionGroups';
 import { FilterTags, IFilterTag, ISortFilter } from 'core/filterModel';
-import { PipelineConfigService } from 'core/pipeline/config/services/PipelineConfigService';
 import { Spinner } from 'core/widgets/spinners/Spinner';
 import { ExecutionState } from 'core/state';
 import { ScrollToService } from 'core/utils';
+import { IRetryablePromise } from 'core/utils/retryablePromise';
 import { SchedulerFactory } from 'core/scheduler';
 
 import './executions.less';
@@ -34,6 +34,7 @@ export interface IExecutionsState {
   initializationError?: boolean;
   filtersExpanded: boolean;
   loading: boolean;
+  poll: IRetryablePromise<any>;
   sortFilter: ISortFilter;
   tags: IFilterTag[];
   triggeringExecution: boolean;
@@ -54,29 +55,11 @@ export class Executions extends React.Component<IExecutionsProps, IExecutionsSta
     this.state = {
       filtersExpanded: this.insightFilterStateModel.filtersExpanded,
       loading: true,
+      poll: null,
       sortFilter: ExecutionState.filterModel.asFilterModel.sortFilter,
       tags: [],
       triggeringExecution: false,
     };
-  }
-
-  public componentWillMount(): void {
-    const { app } = this.props;
-    if (ExecutionState.filterModel.mostRecentApplication !== app.name) {
-      ExecutionState.filterModel.asFilterModel.groups = [];
-      ExecutionState.filterModel.mostRecentApplication = app.name;
-    }
-
-    if (app.notFound) {
-      return;
-    }
-    app.setActiveState(app.executions);
-    app.executions.activate();
-    app.pipelineConfigs.activate();
-    this.activeRefresher = SchedulerFactory.createScheduler(5000);
-    this.activeRefresher.subscribe(() => {
-      app.getDataSource('runningExecutions').refresh();
-    });
   }
 
   private clearFilters = (): void => {
@@ -140,17 +123,17 @@ export class Executions extends React.Component<IExecutionsProps, IExecutionsSta
   };
 
   private startPipeline(command: IPipelineCommand): IPromise<void> {
+    const { executionService } = ReactInjector;
     this.setState({ triggeringExecution: true });
-    return PipelineConfigService.triggerPipeline(this.props.app.name, command.pipelineName, command.trigger).then(
-      (newPipelineId: string) => {
-        const monitor = ReactInjector.executionService.waitUntilNewTriggeredPipelineAppears(
-          this.props.app,
-          newPipelineId,
-        );
-        monitor.then(() => this.setState({ triggeringExecution: false }));
-      },
-      () => this.setState({ triggeringExecution: false }),
-    );
+    return executionService
+      .startAndMonitorPipeline(this.props.app, command.pipelineName, command.trigger)
+      .then(monitor => {
+        this.setState({ poll: monitor });
+        return monitor.promise;
+      })
+      .finally(() => {
+        this.setState({ triggeringExecution: false });
+      });
   }
 
   private startManualExecutionClicked = (): void => {
@@ -217,12 +200,28 @@ export class Executions extends React.Component<IExecutionsProps, IExecutionsSta
   }
 
   public componentDidMount(): void {
+    const { app } = this.props;
+    if (ExecutionState.filterModel.mostRecentApplication !== app.name) {
+      ExecutionState.filterModel.asFilterModel.groups = [];
+      ExecutionState.filterModel.mostRecentApplication = app.name;
+    }
+
+    if (app.notFound) {
+      return;
+    }
+    app.setActiveState(app.executions);
+    app.executions.activate();
+    app.pipelineConfigs.activate();
+    this.activeRefresher = SchedulerFactory.createScheduler(5000);
+    this.activeRefresher.subscribe(() => {
+      app.getDataSource('runningExecutions').refresh();
+    });
+
     this.groupsUpdatedSubscription = ExecutionFilterService.groupsUpdatedStream.subscribe(() => this.groupsUpdated());
     this.locationChangeUnsubscribe = ReactInjector.$uiRouter.transitionService.onSuccess({}, t =>
       this.handleTransitionSuccess(t),
     );
 
-    const { app } = this.props;
     this.executionsRefreshUnsubscribe = app.executions.onRefresh(
       null,
       () => {
@@ -265,6 +264,7 @@ export class Executions extends React.Component<IExecutionsProps, IExecutionsSta
     this.groupsUpdatedSubscription.unsubscribe();
     this.locationChangeUnsubscribe();
     this.activeRefresher && this.activeRefresher.unsubscribe();
+    this.state.poll && this.state.poll.cancel();
   }
 
   private showFilters = (): void => {
@@ -364,7 +364,8 @@ export class Executions extends React.Component<IExecutionsProps, IExecutionsSta
                           <span className="visible-lg-inline">
                             <Spinner size="nano" />
                           </span>
-                          <span className="visible-xl-inline">Starting Execution</span>&hellip;
+                          <span className="visible-xl-inline">Starting Execution</span>
+                          &hellip;
                         </span>
                       )}
                       {!triggeringExecution && (
@@ -449,12 +450,11 @@ export class Executions extends React.Component<IExecutionsProps, IExecutionsSta
               {app.executions.reloadingForFilters && (
                 <div className="text-center transition-overlay" style={{ marginLeft: '-25px' }} />
               )}
-              {!loading &&
-                !hasPipelines && (
-                  <div className="text-center">
-                    <h4>No pipelines configured for this application.</h4>
-                  </div>
-                )}
+              {!loading && !hasPipelines && (
+                <div className="text-center">
+                  <h4>No pipelines configured for this application.</h4>
+                </div>
+              )}
               {app.executions.loadFailure && (
                 <div className="text-center">
                   <h4>There was an error loading executions. We'll try again shortly.</h4>

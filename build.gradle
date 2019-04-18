@@ -6,11 +6,11 @@ import org.redline_rpm.header.Flags
 buildscript {
   repositories {
     jcenter()
-    maven { url "http://dl.bintray.com/spinnaker/gradle" }
+    maven { url "https://dl.bintray.com/spinnaker/gradle" }
     maven { url "https://plugins.gradle.org/m2/" }
   }
   dependencies {
-    classpath 'com.netflix.spinnaker.gradle:spinnaker-gradle-project:4.0.0'
+    classpath 'com.netflix.spinnaker.gradle:spinnaker-gradle-project:4.2.0'
     classpath 'com.moowork.gradle:gradle-node-plugin:1.1.1'
   }
 }
@@ -49,6 +49,7 @@ task webpack(type: NodeTask) {
   environment = [
     "NODE_ENV": "production",
     "GATE_HOST": "spinnaker-api-prestaging.prod.netflix.net",
+    "NODE_OPTIONS": "--max_old_space_size=8192",
   ]
 }
 
@@ -64,6 +65,16 @@ task karma(type: NodeTask) {
   if (project.hasProperty('skipTests')) {
     karma.enabled = false
   }
+}
+
+task functionalTestsChrome(type: NodeTask) {
+  script = file('test/functional/run.js')
+  args = ['--replay-fixtures', '--serve-deck', '--imposter-port=8084', '--browser=chrome', '--headless']
+}
+
+task functionalTestsFirefox(type: NodeTask) {
+  script = file('test/functional/run.js')
+  args = ['--replay-fixtures', '--serve-deck', '--imposter-port=8084', '--browser=firefox', '--headless']
 }
 
 task generateVersionFile << {
@@ -87,6 +98,8 @@ test.dependsOn 'karma'
 copyFavicon.dependsOn 'test'
 buildDeb.dependsOn 'copyFavicon'
 buildRpm.dependsOn 'webpack'
+functionalTestsChrome.dependsOn 'yarn'
+functionalTestsFirefox.dependsOn 'yarn'
 
 String toVers(String v) {
   int idx = v.indexOf('-')

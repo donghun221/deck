@@ -2,70 +2,39 @@
 
 const angular = require('angular');
 
-import {
-  AccountService,
-  INSTANCE_TYPE_SERVICE,
-  LOAD_BALANCER_READ_SERVICE,
-  NetworkReader,
-  SubnetReader,
-} from '@spinnaker/core';
-
 import { GCE_ADDRESS_READER } from 'google/address/address.reader';
 import { GCE_HEALTH_CHECK_READER } from '../healthCheck/healthCheck.read.service';
 
 module.exports = angular
   .module('spinnaker.gce.cache.initializer', [
-    require('../backendService/backendService.reader.js').name,
+    require('../backendService/backendService.reader').name,
     GCE_ADDRESS_READER,
     GCE_HEALTH_CHECK_READER,
-    INSTANCE_TYPE_SERVICE,
-    LOAD_BALANCER_READ_SERVICE,
   ])
-  .factory('gceCacheConfigurer', function(
-    gceAddressReader,
-    gceBackendServiceReader,
-    gceCertificateReader,
-    gceHealthCheckReader,
-    instanceTypeService,
-    loadBalancerReader,
-  ) {
-    let config = Object.create(null);
+  .factory('gceCacheConfigurer', [
+    'gceAddressReader',
+    'gceBackendServiceReader',
+    'gceCertificateReader',
+    'gceHealthCheckReader',
+    function(gceAddressReader, gceBackendServiceReader, gceCertificateReader, gceHealthCheckReader) {
+      const config = Object.create(null);
 
-    config.addresses = {
-      initializers: [() => gceAddressReader.listAddresses()],
-    };
+      config.addresses = {
+        initializers: [() => gceAddressReader.listAddresses()],
+      };
 
-    config.backendServices = {
-      initializers: [() => gceBackendServiceReader.listBackendServices()],
-    };
+      config.backendServices = {
+        initializers: [() => gceBackendServiceReader.listBackendServices()],
+      };
 
-    config.certificates = {
-      initializers: [() => gceCertificateReader.listCertificates()],
-    };
+      config.certificates = {
+        initializers: [() => gceCertificateReader.listCertificates()],
+      };
 
-    config.credentials = {
-      initializers: [() => AccountService.getCredentialsKeyedByAccount('gce')],
-    };
+      config.healthChecks = {
+        initializers: [() => gceHealthCheckReader.listHealthChecks()],
+      };
 
-    config.healthChecks = {
-      initializers: [() => gceHealthCheckReader.listHealthChecks()],
-    };
-
-    config.instanceTypes = {
-      initializers: [() => instanceTypeService.getAllTypesByRegion('gce')],
-    };
-
-    config.loadBalancers = {
-      initializers: [() => loadBalancerReader.listLoadBalancers('gce')],
-    };
-
-    config.networks = {
-      initializers: [() => NetworkReader.listNetworksByProvider('gce')],
-    };
-
-    config.subnets = {
-      initializers: [() => SubnetReader.listSubnetsByProvider('gce')],
-    };
-
-    return config;
-  });
+      return config;
+    },
+  ]);

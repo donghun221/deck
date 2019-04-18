@@ -1,4 +1,5 @@
-import { module, IPromise, IQService } from 'angular';
+import { module, IPromise } from 'angular';
+import { $q } from 'ngimport';
 import {
   chain,
   clone,
@@ -121,17 +122,20 @@ export class AwsServerGroupConfigurationService {
     'Default',
   ];
 
+  public static $inject = [
+    'securityGroupReader',
+    'awsInstanceTypeService',
+    'cacheInitializer',
+    'loadBalancerReader',
+    'serverGroupCommandRegistry',
+  ];
   constructor(
-    private $q: IQService,
-    private awsImageReader: any,
     private securityGroupReader: SecurityGroupReader,
     private awsInstanceTypeService: any,
     private cacheInitializer: CacheInitializerService,
     private loadBalancerReader: LoadBalancerReader,
     private serverGroupCommandRegistry: ServerGroupCommandRegistry,
-  ) {
-    'ngInject';
-  }
+  ) {}
 
   public configureUpdateCommand(command: IAmazonServerGroupCommand): void {
     command.backingData = {
@@ -143,23 +147,14 @@ export class AwsServerGroupConfigurationService {
 
   public configureCommand(application: Application, cmd: IAmazonServerGroupCommand): IPromise<void> {
     this.applyOverrides('beforeConfiguration', cmd);
-    let imageLoader;
-    if (cmd.viewState.disableImageSelection) {
-      imageLoader = this.$q.when(null);
-    } else {
-      imageLoader = cmd.viewState.imageId
-        ? this.loadImagesFromAmi(cmd)
-        : this.loadImagesFromApplicationName(application, cmd.selectedProvider);
-    }
-
     // TODO: Instead of attaching these to the command itself, they could be static methods
     cmd.toggleSuspendedProcess = (command: IAmazonServerGroupCommand, process: string): void => {
       command.suspendedProcesses = command.suspendedProcesses || [];
       const processIndex = command.suspendedProcesses.indexOf(process);
       if (processIndex === -1) {
-        command.suspendedProcesses.push(process);
+        command.suspendedProcesses = command.suspendedProcesses.concat(process);
       } else {
-        command.suspendedProcesses.splice(processIndex, 1);
+        command.suspendedProcesses = command.suspendedProcesses.filter(p => p !== process);
       }
     };
 
@@ -205,23 +200,20 @@ export class AwsServerGroupConfigurationService {
       );
     };
 
-    return this.$q
+    return $q
       .all({
         credentialsKeyedByAccount: AccountService.getCredentialsKeyedByAccount('aws'),
         securityGroups: this.securityGroupReader.getAllSecurityGroups(),
         subnets: SubnetReader.listSubnets(),
         preferredZones: AccountService.getPreferredZonesByAccount('aws'),
         keyPairs: KeyPairsReader.listKeyPairs(),
-        packageImages: imageLoader,
         instanceTypes: this.awsInstanceTypeService.getAllTypesByRegion(),
-        enabledMetrics: this.$q.when(clone(this.enabledMetrics)),
-        healthCheckTypes: this.$q.when(clone(this.healthCheckTypes)),
-        terminationPolicies: this.$q.when(clone(this.terminationPolicies)),
+        enabledMetrics: $q.when(clone(this.enabledMetrics)),
+        healthCheckTypes: $q.when(clone(this.healthCheckTypes)),
+        terminationPolicies: $q.when(clone(this.terminationPolicies)),
       })
       .then((backingData: Partial<IAmazonServerGroupCommandBackingData>) => {
-        let loadBalancerReloader = this.$q.when();
-        let securityGroupReloader = this.$q.when();
-        let instanceTypeReloader = this.$q.when();
+        let securityGroupReloader = $q.when();
         backingData.accounts = keys(backingData.credentialsKeyedByAccount);
         backingData.filtered = {} as IAmazonServerGroupCommandBackingDataFiltered;
         backingData.scalingProcesses = AutoScalingProcessService.listProcesses();
@@ -233,24 +225,14 @@ export class AwsServerGroupConfigurationService {
           this.configureInstanceTypes(cmd);
         }
 
-        if (cmd.loadBalancers && cmd.loadBalancers.length) {
-          // verify all load balancers are accounted for; otherwise, try refreshing load balancers cache
-          const loadBalancerNames = this.getLoadBalancerNames(cmd);
-          if (intersection(loadBalancerNames, cmd.loadBalancers).length < cmd.loadBalancers.length) {
-            loadBalancerReloader = this.refreshLoadBalancers(cmd, true);
-          }
-        }
         if (cmd.securityGroups && cmd.securityGroups.length) {
           const regionalSecurityGroupIds = map(this.getRegionalSecurityGroups(cmd), 'id');
           if (intersection(cmd.securityGroups, regionalSecurityGroupIds).length < cmd.securityGroups.length) {
             securityGroupReloader = this.refreshSecurityGroups(cmd, true);
           }
         }
-        if (cmd.instanceType) {
-          instanceTypeReloader = this.refreshInstanceTypes(cmd, true);
-        }
 
-        return this.$q.all([loadBalancerReloader, securityGroupReloader, instanceTypeReloader]).then(() => {
+        return securityGroupReloader.then(() => {
           this.applyOverrides('afterConfiguration', cmd);
           this.attachEventHandlers(cmd);
         });
@@ -263,41 +245,6 @@ export class AwsServerGroupConfigurationService {
         override[phase](command);
       }
     });
-  }
-
-  public loadImagesFromApplicationName(application: Application, provider: string): any {
-    return this.awsImageReader.findImages({
-      provider,
-      q: application.name.replace(/_/g, '[_\\-]') + '*',
-    });
-  }
-
-  public loadImagesFromAmi(command: IAmazonServerGroupCommand): IPromise<any> {
-    return this.awsImageReader.getImage(command.viewState.imageId, command.region, command.credentials).then(
-      (namedImage: any) => {
-        if (!namedImage) {
-          return [];
-        }
-        command.amiName = namedImage.imageName;
-
-        let addDashToQuery = false;
-        let packageBase = namedImage.imageName.split('_')[0];
-        const parts = packageBase.split('-');
-        if (parts.length > 3) {
-          packageBase = parts.slice(0, -3).join('-');
-          addDashToQuery = true;
-        }
-        if (!packageBase || packageBase.length < 3) {
-          return [namedImage];
-        }
-
-        return this.awsImageReader.findImages({
-          provider: command.selectedProvider,
-          q: packageBase + (addDashToQuery ? '-*' : '*'),
-        });
-      },
-      (): any[] => [],
-    );
   }
 
   public configureKeyPairs(command: IAmazonServerGroupCommand): IServerGroupCommandResult {
@@ -370,37 +317,16 @@ export class AwsServerGroupConfigurationService {
 
   public configureImages(command: IAmazonServerGroupCommand): IServerGroupCommandResult {
     const result: IAmazonServerGroupCommandResult = { dirty: {} };
-    let regionalImages;
     if (!command.amiName) {
       command.virtualizationType = null;
     }
     if (command.viewState.disableImageSelection) {
       return result;
     }
-    if (command.region) {
-      regionalImages = command.backingData.packageImages
-        .filter(image => image.amis && image.amis[command.region])
-        .map(image => {
-          return {
-            virtualizationType: image.attributes.virtualizationType,
-            imageName: image.imageName,
-            ami: image.amis ? image.amis[command.region][0] : null,
-          };
-        });
-      const match = regionalImages.find(image => image.imageName === command.amiName);
-      if (command.amiName && !match) {
-        result.dirty.amiName = true;
-        command.amiName = null;
-      } else {
-        command.virtualizationType = match ? match.virtualizationType : null;
-      }
-    } else {
-      if (command.amiName) {
-        result.dirty.amiName = true;
-        command.amiName = null;
-      }
+    if (command.amiName && !command.region) {
+      result.dirty.amiName = true;
+      command.amiName = null;
     }
-    command.backingData.filtered.images = regionalImages;
     return result;
   }
 
@@ -472,14 +398,6 @@ export class AwsServerGroupConfigurationService {
       }
     }
     command.backingData.filtered.securityGroups = newRegionalSecurityGroups.sort((a, b) => {
-      if (command.securityGroups && !isExpression) {
-        if (command.securityGroups.includes(a.id)) {
-          return -1;
-        }
-        if (command.securityGroups.includes(b.id)) {
-          return 1;
-        }
-      }
       return a.name.localeCompare(b.name);
     });
     return result;
@@ -494,20 +412,6 @@ export class AwsServerGroupConfigurationService {
         command.backingData.securityGroups = securityGroups;
         if (!skipCommandReconfiguration) {
           this.configureSecurityGroupOptions(command);
-        }
-      });
-    });
-  }
-
-  public refreshInstanceTypes(
-    command: IAmazonServerGroupCommand,
-    skipCommandReconfiguration?: boolean,
-  ): IPromise<void> {
-    return this.cacheInitializer.refreshCache('instanceTypes').then(() => {
-      return this.awsInstanceTypeService.getAllTypesByRegion().then((instanceTypes: string[]) => {
-        command.backingData.instanceTypes = instanceTypes;
-        if (!skipCommandReconfiguration) {
-          this.configureInstanceTypes(command);
         }
       });
     });
@@ -570,7 +474,7 @@ export class AwsServerGroupConfigurationService {
     const vpcLoadBalancers = this.getVpcLoadBalancerNames(command);
     const allTargetGroups = this.getTargetGroupNames(command);
 
-    if (currentLoadBalancers && command.loadBalancers) {
+    if (currentLoadBalancers && command.loadBalancers && !currentLoadBalancers.includes('${')) {
       const allValidLoadBalancers = command.vpcId ? newLoadBalancers : newLoadBalancers.concat(vpcLoadBalancers);
       const { valid, invalid, spel } = this.getValidMatches(allValidLoadBalancers, currentLoadBalancers);
       command.loadBalancers = intersection(newLoadBalancers, valid);
@@ -585,7 +489,7 @@ export class AwsServerGroupConfigurationService {
       command.spelLoadBalancers = spel || [];
     }
 
-    if (currentTargetGroups && command.targetGroups) {
+    if (currentTargetGroups && command.targetGroups && !currentTargetGroups.includes('${')) {
       const { valid, invalid, spel } = this.getValidMatches(allTargetGroups, currentTargetGroups);
       command.targetGroups = valid;
       if (invalid.length) {
@@ -601,13 +505,11 @@ export class AwsServerGroupConfigurationService {
   }
 
   public refreshLoadBalancers(command: IAmazonServerGroupCommand, skipCommandReconfiguration?: boolean) {
-    return this.cacheInitializer.refreshCache('loadBalancers').then(() => {
-      return this.loadBalancerReader.listLoadBalancers('aws').then(loadBalancers => {
-        command.backingData.loadBalancers = loadBalancers;
-        if (!skipCommandReconfiguration) {
-          this.configureLoadBalancerOptions(command);
-        }
-      });
+    return this.loadBalancerReader.listLoadBalancers('aws').then(loadBalancers => {
+      command.backingData.loadBalancers = loadBalancers;
+      if (!skipCommandReconfiguration) {
+        this.configureLoadBalancerOptions(command);
+      }
     });
   }
 
@@ -715,9 +617,8 @@ export class AwsServerGroupConfigurationService {
 
 export const AWS_SERVER_GROUP_CONFIGURATION_SERVICE = 'spinnaker.amazon.serverGroup.configure.service';
 module(AWS_SERVER_GROUP_CONFIGURATION_SERVICE, [
-  require('amazon/image/image.reader.js').name,
   SECURITY_GROUP_READER,
-  require('amazon/instance/awsInstanceType.service.js').name,
+  require('amazon/instance/awsInstanceType.service').name,
   LOAD_BALANCER_READ_SERVICE,
   CACHE_INITIALIZER_SERVICE,
   SERVER_GROUP_COMMAND_REGISTRY_PROVIDER,

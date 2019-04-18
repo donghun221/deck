@@ -1,18 +1,19 @@
-import { APPLICATION_MODEL_BUILDER } from 'core/application/applicationModel.builder';
+import { ApplicationModelBuilder } from 'core/application/applicationModel.builder';
 import { PipelineConfigService } from 'core/pipeline/config/services/PipelineConfigService';
 
 describe('Controller: deletePipelineModal', function() {
   const angular = require('angular');
 
-  beforeEach(window.module(require('./delete.module.js').name, APPLICATION_MODEL_BUILDER));
+  beforeEach(window.module(require('./delete.module').name));
   beforeEach(
-    window.inject(function($controller, $rootScope, $log, $q, $state, applicationModelBuilder) {
+    window.inject(function($controller, $rootScope, $log, $q, $state) {
+      this.$rootScope = $rootScope;
       this.$q = $q;
-      this.application = applicationModelBuilder.createApplication('app', {
+      this.application = ApplicationModelBuilder.createApplicationForTests('app', {
         key: 'pipelineConfigs',
         lazy: true,
-        loader: () => this.$q.when(null),
-        onLoad: () => this.$q.when(null),
+        loader: () => this.$q.when(this.application.pipelineConfigs.data),
+        onLoad: (_app, data) => this.$q.when(data),
       });
       this.initializeController = function(pipeline) {
         this.$state = $state;
@@ -40,6 +41,8 @@ describe('Controller: deletePipelineModal', function() {
       ];
 
       this.application.pipelineConfigs.activate();
+      this.$rootScope.$digest();
+
       this.application.pipelineConfigs.data = [this.pipelines[0], this.pipelines[1], this.pipelines[2]];
       this.initializeController(this.pipelines[1]);
     });
@@ -51,12 +54,12 @@ describe('Controller: deletePipelineModal', function() {
         newStateTarget = null,
         newStateOptions = null;
 
-      spyOn(PipelineConfigService, 'deletePipeline').and.callFake(function(applicationName, {}, pipelineName) {
+      spyOn(PipelineConfigService, 'deletePipeline').and.callFake(function(applicationName, _, pipelineName) {
         submittedPipeline = pipelineName;
         submittedApplication = applicationName;
         return $q.when(null);
       });
-      spyOn(PipelineConfigService, 'savePipeline');
+      spyOn(PipelineConfigService, 'reorderPipelines');
       spyOn(this.$uibModalInstance, 'close');
       spyOn(this.$state, 'go').and.callFake(function(target, params, options) {
         newStateTarget = target;
@@ -69,8 +72,8 @@ describe('Controller: deletePipelineModal', function() {
       expect(submittedPipeline).toBe('b');
       expect(submittedApplication).toBe('app');
       expect(this.application.pipelineConfigs.data).toEqual([this.pipelines[0], this.pipelines[2]]);
-      expect(PipelineConfigService.savePipeline).toHaveBeenCalledWith(this.pipelines[2]);
-      expect(PipelineConfigService.savePipeline.calls.count()).toEqual(1);
+      expect(PipelineConfigService.reorderPipelines).toHaveBeenCalledWith('app', { C: 1 }, false);
+      expect(PipelineConfigService.reorderPipelines.calls.count()).toEqual(1);
       expect(this.pipelines[2].index).toBe(1);
       expect(newStateTarget).toBe('^.executions');
       expect(newStateOptions).toEqual({ location: 'replace' });

@@ -8,6 +8,7 @@ import { Registry } from 'core/registry';
 export interface IWebhookStageViewState {
   waitForCompletion?: boolean;
   statusUrlResolution: string;
+  failFastStatusCodes: string;
 }
 
 export interface IWebhookStageCommand {
@@ -47,13 +48,14 @@ export class WebhookStage implements IController {
   public noUserConfigurableFields: boolean;
   public parameters: IWebhookParameter[] = [];
 
+  public static $inject = ['stage', '$uibModal'];
   constructor(public stage: any, private $uibModal: IModalService) {
-    'ngInject';
-    this.methods = ['GET', 'HEAD', 'POST', 'PUT', 'DELETE'];
+    this.methods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
     this.viewState = {
       waitForCompletion: this.stage.waitForCompletion || false,
       statusUrlResolution: this.stage.statusUrlResolution || 'getMethod',
+      failFastStatusCodes: this.stage.failFastStatusCodes ? this.stage.failFastStatusCodes.join() : '',
     };
 
     this.command = {
@@ -69,6 +71,7 @@ export class WebhookStage implements IController {
       this.viewState.waitForCompletion =
         stageConfig.configuration.waitForCompletion || this.viewState.waitForCompletion;
       this.parameters = stageConfig.configuration.parameters || [];
+      this.viewState.failFastStatusCodes = this.stage.failFastStatusCodes ? this.stage.failFastStatusCodes.join() : '';
     }
 
     if (this.parameters.length && !this.stage.parameterValues) {
@@ -99,6 +102,12 @@ export class WebhookStage implements IController {
 
   public statusUrlResolutionChanged(): void {
     this.stage.statusUrlResolution = this.viewState.statusUrlResolution;
+  }
+
+  public failFastCodesChanged(): void {
+    const failFastCodes = this.viewState.failFastStatusCodes.split(',').map(x => x.trim());
+
+    this.stage.failFastStatusCodes = failFastCodes.map(x => parseInt(x, 10)).filter(x => !isNaN(x));
   }
 
   public customHeaderCount(): number {
@@ -160,6 +169,7 @@ module(WEBHOOK_STAGE, [])
             key: preconfiguredWebhook.type,
             alias: 'preconfiguredWebhook',
             addAliasToConfig: true,
+            producesArtifacts: true,
             restartable: true,
             controller: 'WebhookStageCtrl',
             controllerAs: '$ctrl',

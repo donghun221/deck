@@ -2,7 +2,7 @@
 
 describe('gceServerGroupTransformer', () => {
   let transformer, $q, $scope;
-  beforeEach(window.module(require('./serverGroup.transformer.js').name));
+  beforeEach(window.module(require('./serverGroup.transformer').name));
 
   beforeEach(() => {
     window.inject((_$q_, $rootScope, _gceServerGroupTransformer_) => {
@@ -37,7 +37,7 @@ describe('gceServerGroupTransformer', () => {
     });
 
     it('should map listener names to url map names', function() {
-      let serverGroup = {
+      const serverGroup = {
         account: 'my-google-account',
         loadBalancers: [
           'network-load-balancer',

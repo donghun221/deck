@@ -1,16 +1,11 @@
 import { module } from 'angular';
 import { get } from 'lodash';
 
-import {
-  ArtifactReferenceService,
-  ExecutionArtifactTab,
-  ExecutionDetailsTasks,
-  ExpectedArtifactService,
-  IArtifact,
-  IStage,
-  Registry,
-  SETTINGS,
-} from 'core';
+import { ArtifactReferenceService, ExecutionArtifactTab, ExpectedArtifactService } from 'core/artifact';
+import { ExecutionDetailsTasks } from 'core/pipeline';
+import { IArtifact, IStage } from 'core/domain';
+import { Registry } from 'core/registry';
+import { SETTINGS } from 'core/config';
 
 import { BakeManifestConfigCtrl } from './bakeManifestConfig.controller';
 
@@ -40,6 +35,7 @@ module(BAKE_MANIFEST_STAGE, [])
           stage.expectedArtifacts = get(stage, 'expectedArtifacts', []).filter(a => !artifactMatches(a));
           stage.inputArtifacts = get(stage, 'inputArtifacts', []).filter(a => !artifactMatches(a));
         },
+        validators: [{ type: 'requiredField', fieldName: 'outputName', fieldLabel: 'Name' }],
       });
     }
   })

@@ -1,9 +1,9 @@
-import { duration } from 'moment';
+import { duration } from 'core/utils/timeFormatters';
 import { find, findLast, flattenDeep, get, has, maxBy, uniq, sortBy } from 'lodash';
 
 import { Application } from 'core/application';
-import { ExecutionBarLabel } from 'core/pipeline/config/stages/core/ExecutionBarLabel';
-import { ExecutionMarkerIcon } from 'core/pipeline/config/stages/core/ExecutionMarkerIcon';
+import { ExecutionBarLabel } from 'core/pipeline/config/stages/common/ExecutionBarLabel';
+import { ExecutionMarkerIcon } from 'core/pipeline/config/stages/common/ExecutionMarkerIcon';
 import { IExecution, IExecutionStage, IExecutionStageSummary, IOrchestratedItem } from 'core/domain';
 import { OrchestratedItemTransformer } from 'core/orchestratedItem/orchestratedItem.transformer';
 import { Registry } from 'core/registry';
@@ -242,7 +242,7 @@ export class ExecutionsTransformer {
       : 0;
     this.filterStages(summary);
     this.setFirstActiveStage(summary);
-    this.setExecutionWindow(summary);
+    this.setSuspendedStageTypes(summary);
     this.transformStage(summary);
     this.styleStage(summary);
     OrchestratedItemTransformer.defineProperties(summary);
@@ -259,10 +259,10 @@ export class ExecutionsTransformer {
     }
   }
 
-  private static setExecutionWindow(summary: IExecutionStageSummary): void {
-    if (summary.stages.some(s => s.type === 'restrictExecutionDuringTimeWindow' && s.isSuspended)) {
-      summary.inSuspendedExecutionWindow = true;
-    }
+  private static setSuspendedStageTypes(summary: IExecutionStageSummary): void {
+    summary.suspendedStageTypes = new Set(
+      summary.stages.filter(({ isSuspended }) => isSuspended).map(({ type }) => type),
+    );
   }
 
   private static setFirstActiveStage(summary: IExecutionStageSummary): void {
@@ -273,6 +273,9 @@ export class ExecutionsTransformer {
     }
     if (steps.find(s => s.isFailed)) {
       summary.firstActiveStage = steps.findIndex(s => s.isFailed);
+    }
+    if (steps.find(s => s.isFailed && !!s.failureMessage)) {
+      summary.firstActiveStage = steps.findIndex(s => s.isFailed && !!s.failureMessage);
     }
   }
 
@@ -409,7 +412,7 @@ export class ExecutionsTransformer {
         // Update the runningTimeInMs function to account for the group
         Object.defineProperties(groupedStage, {
           runningTime: {
-            get: () => duration(this.calculateRunningTime(groupedStage)()).humanize(),
+            get: () => duration(this.calculateRunningTime(groupedStage)()),
             configurable: true,
           },
           runningTimeInMs: {

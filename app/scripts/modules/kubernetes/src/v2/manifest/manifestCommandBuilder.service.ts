@@ -1,9 +1,11 @@
-import { cloneDeep } from 'lodash';
-import { dump, loadAll } from 'js-yaml';
+import { cloneDeep, has } from 'lodash';
 import { $q } from 'ngimport';
 import { IPromise } from 'angular';
+import { load } from 'js-yaml';
 
 import { AccountService, Application, IMoniker, IArtifactAccount, IAccountDetails } from '@spinnaker/core';
+
+const LAST_APPLIED_CONFIGURATION = 'kubectl.kubernetes.io/last-applied-configuration';
 
 export interface IKubernetesManifestCommandData {
   command: IKubernetesManifestCommand;
@@ -24,8 +26,6 @@ export interface IKubernetesManifestCommand {
 }
 
 export interface IKubernetesManifestCommandMetadata {
-  manifestText: string;
-  yamlError: boolean;
   backingData: any;
 }
 
@@ -48,13 +48,8 @@ export class KubernetesManifestCommandBuilder {
     return true;
   }
 
-  public static copyAndCleanCommand(
-    metadata: IKubernetesManifestCommandMetadata,
-    input: IKubernetesManifestCommand,
-  ): IKubernetesManifestCommand {
+  public static copyAndCleanCommand(input: IKubernetesManifestCommand): IKubernetesManifestCommand {
     const command = cloneDeep(input);
-    command.manifests = [];
-    loadAll(metadata.manifestText, doc => command.manifests.push(doc));
     delete command.source;
     return command;
   }
@@ -65,6 +60,10 @@ export class KubernetesManifestCommandBuilder {
     sourceMoniker?: IMoniker,
     sourceAccount?: string,
   ): IPromise<IKubernetesManifestCommandData> {
+    if (sourceManifest != null && has(sourceManifest, ['metadata', 'annotations', LAST_APPLIED_CONFIGURATION])) {
+      sourceManifest = load(sourceManifest.metadata.annotations[LAST_APPLIED_CONFIGURATION]);
+    }
+
     const dataToFetch = {
       accounts: AccountService.getAllAccountDetailsForProvider('kubernetes', 'v2'),
       artifactAccounts: AccountService.getArtifactAccounts(),
@@ -80,8 +79,8 @@ export class KubernetesManifestCommandBuilder {
         const account = accounts.some(a => a.name === sourceAccount)
           ? accounts.find(a => a.name === sourceAccount).name
           : accounts.length
-            ? accounts[0].name
-            : null;
+          ? accounts[0].name
+          : null;
 
         let manifestArtifactAccount: string = null;
         const [artifactAccountData] = artifactAccounts;
@@ -89,9 +88,6 @@ export class KubernetesManifestCommandBuilder {
           manifestArtifactAccount = artifactAccountData.name;
         }
 
-        const manifest: any = null;
-        const manifests: any = null;
-        const manifestText = !sourceManifest ? '' : dump(sourceManifest);
         const cloudProvider = 'kubernetes';
         const moniker = sourceMoniker || {
           app: app.name,
@@ -107,8 +103,12 @@ export class KubernetesManifestCommandBuilder {
         return {
           command: {
             cloudProvider,
-            manifest,
-            manifests,
+            manifest: null,
+            manifests: Array.isArray(sourceManifest)
+              ? sourceManifest
+              : sourceManifest != null
+              ? [sourceManifest]
+              : null,
             relationships,
             moniker,
             account,
@@ -117,7 +117,6 @@ export class KubernetesManifestCommandBuilder {
           },
           metadata: {
             backingData,
-            manifestText,
           },
         } as IKubernetesManifestCommandData;
       });

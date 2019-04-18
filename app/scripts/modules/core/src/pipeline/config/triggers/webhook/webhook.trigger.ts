@@ -1,5 +1,6 @@
 import { IController, module } from 'angular';
 
+import { ArtifactTypePatterns } from 'core/artifact';
 import { IWebhookTrigger } from 'core/domain';
 import { Registry } from 'core/registry';
 import { ServiceAccountReader } from 'core/serviceAccount/ServiceAccountReader';
@@ -9,8 +10,8 @@ class WebhookTriggerController implements IController {
   public fiatEnabled: boolean;
   public serviceAccounts: string[];
 
+  public static $inject = ['trigger'];
   constructor(public trigger: IWebhookTrigger) {
-    'ngInject';
     this.fiatEnabled = SETTINGS.feature.fiatEnabled;
     ServiceAccountReader.getServiceAccounts().then(accounts => {
       this.serviceAccounts = accounts || [];
@@ -32,6 +33,7 @@ module(WEBHOOK_TRIGGER, [])
       controller: 'WebhookTriggerCtrl',
       controllerAs: 'ctrl',
       templateUrl: require('./webhookTrigger.html'),
+      excludedArtifactTypePatterns: [ArtifactTypePatterns.JENKINS_FILE],
       validators: [
         {
           type: 'serviceAccountAccess',

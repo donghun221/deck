@@ -25,8 +25,8 @@ export class ApplicationStateProvider implements IServiceProvider {
     children: this.insightStates,
   };
 
+  public static $inject = ['stateConfigProvider'];
   constructor(private stateConfigProvider: StateConfigProvider) {
-    'ngInject';
     this.childStates.push(this.insightState);
   }
 
@@ -80,14 +80,15 @@ export class ApplicationStateProvider implements IServiceProvider {
       resolve: {
         app: [
           '$stateParams',
-          'applicationModelBuilder',
-          ($stateParams: StateParams, applicationModelBuilder: ApplicationModelBuilder) => {
+          ($stateParams: StateParams) => {
             return ApplicationReader.getApplication($stateParams.application, false)
-              .then((app: Application): Application => {
-                InferredApplicationWarningService.checkIfInferredAndWarn(app);
-                return app || applicationModelBuilder.createNotFoundApplication($stateParams.application);
-              })
-              .catch(() => applicationModelBuilder.createNotFoundApplication($stateParams.application));
+              .then(
+                (app: Application): Application => {
+                  InferredApplicationWarningService.checkIfInferredAndWarn(app);
+                  return app || ApplicationModelBuilder.createNotFoundApplication($stateParams.application);
+                },
+              )
+              .catch(() => ApplicationModelBuilder.createNotFoundApplication($stateParams.application));
           },
         ],
       },

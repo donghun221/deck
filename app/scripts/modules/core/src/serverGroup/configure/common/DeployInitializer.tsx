@@ -21,7 +21,7 @@ export interface IDeployInitializerProps {
   command: IServerGroupCommand;
   onDismiss: () => void;
   onTemplateSelected: () => void;
-  templateSelectionText: ITemplateSelectionText;
+  templateSelectionText?: ITemplateSelectionText;
 }
 
 export interface IDeployInitializerState {
@@ -89,6 +89,7 @@ export class DeployInitializer extends React.Component<IDeployInitializerProps, 
     viewState.submitButtonLabel = 'Add';
     viewState.hideClusterNamePreview = baseCommand.viewState.hideClusterNamePreview || false;
     viewState.templatingEnabled = true;
+    viewState.imageSourceText = baseCommand.viewState.imageSourceText;
     Object.assign(command, baseCommand.viewState.overrides || {});
     Object.assign(baseCommand, command);
   }
@@ -179,19 +180,27 @@ export class DeployInitializer extends React.Component<IDeployInitializerProps, 
                   <p className="col-md-10 col-md-offset-1">{command.viewState.customTemplateMessage}</p>
                 </div>
               )}
-              {selectedTemplate.serverGroup && (
+              {selectedTemplate.serverGroup && templateSelectionText && (
                 <div className="form-group" style={{ marginTop: '20px' }}>
                   <div className="col-md-10 col-md-offset-1 well">
                     {templateSelectionText.copied.length > 0 && (
                       <div>
                         These fields <strong>will be</strong> copied over from the most recent server group:
-                        <ul>{templateSelectionText.copied.map((text, i) => <li key={i}>{text}</li>)}</ul>
+                        <ul>
+                          {templateSelectionText.copied.map((text, i) => (
+                            <li key={i}>{text}</li>
+                          ))}
+                        </ul>
                       </div>
                     )}
                     {templateSelectionText.notCopied.length > 0 && (
                       <div>
                         These fields <strong>will NOT</strong> be copied over, and will be reset to defaults:
-                        <ul>{templateSelectionText.notCopied.map((text, i) => <li key={i}>{text}</li>)}</ul>
+                        <ul>
+                          {templateSelectionText.notCopied.map((text, i) => (
+                            <li key={i}>{text}</li>
+                          ))}
+                        </ul>
                       </div>
                     )}
                     {templateSelectionText.additionalCopyText && <div>{templateSelectionText.additionalCopyText}</div>}

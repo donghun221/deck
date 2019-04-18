@@ -2,6 +2,7 @@ import { IFilterService, mock } from 'angular';
 
 import { SETTINGS } from 'core/config/settings';
 import { duration } from './timeFormatters';
+import { Settings } from 'luxon';
 
 describe('Filter: timeFormatters', function() {
   beforeEach(function() {
@@ -58,7 +59,17 @@ describe('Filter: timeFormatters', function() {
         expect(filter('a')).toBe('-');
       });
       it('returns formatted date when valid value is provided', function() {
+        expect(filter(1445707299020)).toBe('2015-10-24 17:21:39 UTC');
+      });
+      it('returns formatted date in user local time when valid value is provided', function() {
+        SETTINGS.feature.displayTimestampsInUserLocalTime = true;
+        const baseZone = Settings.defaultZoneName;
+        // NOTE: this maybe breaks, depending on where the user running the test is.
+        // For example, the test originally set the timezone to "Asia/Tokyo", which
+        // should output "JST". However, in the US, Chrome output "GMT+9". :(
+        Settings.defaultZoneName = 'Atlantic/Reykjavik';
         expect(filter(1445707299020)).toBe('2015-10-24 17:21:39 GMT');
+        Settings.defaultZoneName = baseZone;
       });
     });
 

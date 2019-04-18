@@ -11,7 +11,9 @@ import {
 } from '@spinnaker/core';
 
 import { IKubernetesInstance } from './IKubernetesInstance';
-import { KubernetesManifestService } from '../../manifest/manifest.service';
+import { KubernetesManifestService } from 'kubernetes/v2/manifest/manifest.service';
+import { ManifestWizard } from 'kubernetes/v2/manifest/wizard/ManifestWizard';
+import { KubernetesManifestCommandBuilder } from 'kubernetes/v2/manifest/manifestCommandBuilder.service';
 
 interface InstanceFromStateParams {
   instanceId: string;
@@ -38,6 +40,7 @@ class KubernetesInstanceDetailsController implements IController {
   public manifest: IManifest;
   public consoleOutputInstance: IConsoleOutputInstance;
 
+  public static $inject = ['instance', '$uibModal', '$q', '$scope', 'app'];
   constructor(
     instance: InstanceFromStateParams,
     private $uibModal: IModalService,
@@ -45,8 +48,6 @@ class KubernetesInstanceDetailsController implements IController {
     private $scope: IScope,
     private app: Application,
   ) {
-    'ngInject';
-
     this.app
       .ready()
       .then(() => this.retrieveInstance(instance))
@@ -96,17 +97,13 @@ class KubernetesInstanceDetailsController implements IController {
   }
 
   public editInstance(): void {
-    this.$uibModal.open({
-      templateUrl: require('kubernetes/v2/manifest/wizard/manifestWizard.html'),
-      size: 'lg',
-      controller: 'kubernetesV2ManifestEditCtrl',
-      controllerAs: 'ctrl',
-      resolve: {
-        sourceManifest: () => this.instance.manifest,
-        sourceMoniker: () => this.instance.moniker,
-        application: () => this.app,
-        account: () => this.instance.account,
-      },
+    KubernetesManifestCommandBuilder.buildNewManifestCommand(
+      this.app,
+      this.instance.manifest,
+      this.instance.moniker,
+      this.instance.account,
+    ).then(builtCommand => {
+      ManifestWizard.show({ title: 'Edit Manifest', application: this.app, command: builtCommand });
     });
   }
 

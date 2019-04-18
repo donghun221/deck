@@ -1,12 +1,12 @@
-import { APPLICATION_MODEL_BUILDER } from '@spinnaker/core';
+import { ApplicationModelBuilder } from '@spinnaker/core';
 
 describe('Controller: LoadBalancerDetailsCtrl', function() {
   //NOTE: This is just a skeleton test to test DI.  Please add more tests.;
 
-  var controller;
-  var $scope;
-  var $state;
-  var loadBalancer = {
+  let controller;
+  let $scope;
+  let $state;
+  const loadBalancer = {
     name: 'foo',
     region: 'us-west-1',
     account: 'test',
@@ -14,13 +14,13 @@ describe('Controller: LoadBalancerDetailsCtrl', function() {
     vpcId: '1',
   };
 
-  beforeEach(window.module(require('./loadBalancerDetail.controller').name, APPLICATION_MODEL_BUILDER));
+  beforeEach(window.module(require('./loadBalancerDetail.controller').name));
 
   beforeEach(
-    window.inject(function($controller, $rootScope, _$state_, applicationModelBuilder) {
+    window.inject(function($controller, $rootScope, _$state_) {
       $scope = $rootScope.$new();
       $state = _$state_;
-      let app = applicationModelBuilder.createApplication('app', { key: 'loadBalancers', lazy: true });
+      const app = ApplicationModelBuilder.createApplicationForTests('app', { key: 'loadBalancers', lazy: true });
       app.loadBalancers.data.push(loadBalancer);
       controller = $controller('gceLoadBalancerDetailsCtrl', {
         $scope: $scope,

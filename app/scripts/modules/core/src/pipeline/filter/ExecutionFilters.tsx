@@ -1,15 +1,16 @@
+import { IPromise } from 'angular';
 import * as React from 'react';
 import * as ReactGA from 'react-ga';
-import { get, orderBy, uniq } from 'lodash';
+import { get, isEmpty, orderBy, uniq } from 'lodash';
 import { Debounce } from 'lodash-decorators';
-import { $q } from 'ngimport';
+import * as classnames from 'classnames';
 import { SortableContainer, SortableElement, SortableHandle, arrayMove, SortEnd } from 'react-sortable-hoc';
 import { Subscription } from 'rxjs';
 
 import { Application } from 'core/application';
 import { FilterSection } from 'core/cluster/filter/FilterSection';
 import { IFilterTag } from 'core/filterModel';
-import { IPipeline } from 'core/domain';
+import { IExecution, IPipeline } from 'core/domain';
 import { PipelineConfigService } from 'core/pipeline/config/services/PipelineConfigService';
 import { ReactInjector } from 'core/reactShims';
 import { ExecutionState } from 'core/state';
@@ -23,6 +24,7 @@ export interface IExecutionFiltersProps {
 
 export interface IExecutionFiltersState {
   pipelineNames: string[];
+  strategyNames: string[];
   pipelineReorderEnabled: boolean;
   tags: IFilterTag[];
 }
@@ -41,7 +43,8 @@ export class ExecutionFilters extends React.Component<IExecutionFiltersProps, IE
     super(props);
 
     this.state = {
-      pipelineNames: this.getPipelineNames(),
+      pipelineNames: this.getPipelineNames(false),
+      strategyNames: this.getPipelineNames(true),
       pipelineReorderEnabled: false,
       tags: ExecutionState.filterModel.asFilterModel.tags,
     };
@@ -94,21 +97,29 @@ export class ExecutionFilters extends React.Component<IExecutionFiltersProps, IE
     this.refreshExecutions();
   };
 
-  private getPipelineNames(): string[] {
+  private getPipelineNames(strategy: boolean): string[] {
     const { application } = this.props;
     if (application.pipelineConfigs.loadFailure) {
       return [];
     }
-    const configs = get(application, 'pipelineConfigs.data', []).concat(get(application, 'strategyConfigs.data', []));
+    const source = strategy ? 'strategyConfigs' : 'pipelineConfigs';
+    const otherSource = strategy ? 'pipelineConfigs' : 'strategyConfigs';
+    const configs = get(application, `${source}.data`, []);
+    const otherConfigs = get(application, `${otherSource}.data`, []);
+    const allConfigIds = configs.concat(otherConfigs).map(c => c.id);
+    // assume executions which don't have a match by pipelineConfigId are regular executions, not strategies
+    const unmatchedExecutions = strategy
+      ? []
+      : application.executions.data.filter((e: IExecution) => !allConfigIds.includes(e.pipelineConfigId));
     const allOptions = orderBy(configs, ['strategy', 'index'], ['desc', 'asc'])
-      .concat(application.executions.data)
+      .concat(unmatchedExecutions)
       .filter((option: any) => option && option.name)
       .map((option: any) => option.name);
     return uniq(allOptions);
   }
 
   private refreshPipelines(): void {
-    this.setState({ pipelineNames: this.getPipelineNames() });
+    this.setState({ pipelineNames: this.getPipelineNames(false), strategyNames: this.getPipelineNames(true) });
     this.initialize();
   }
 
@@ -140,28 +151,30 @@ export class ExecutionFilters extends React.Component<IExecutionFiltersProps, IE
     this.updateFilterSearch(event.currentTarget.value);
   };
 
-  private updatePipelines(pipelines: IPipeline[]): void {
-    $q.all(pipelines.map(pipeline => PipelineConfigService.savePipeline(pipeline)));
+  private updatePipelines(idsToUpdatedIndices: { [key: string]: number }): IPromise<void> {
+    return PipelineConfigService.reorderPipelines(this.props.application.name, idsToUpdatedIndices, false);
   }
 
   private handleSortEnd = (sortEnd: SortEnd): void => {
     const pipelineNames = arrayMove(this.state.pipelineNames, sortEnd.oldIndex, sortEnd.newIndex);
     const { application } = this.props;
     ReactGA.event({ category: 'Pipelines', action: 'Reordered pipeline' });
-    const dirty: IPipeline[] = [];
-    application.pipelineConfigs.data.concat(application.strategyConfigs.data).forEach((pipeline: IPipeline) => {
+    const idsToUpdatedIndices: { [key: string]: number } = {};
+    application.pipelineConfigs.data.forEach((pipeline: IPipeline) => {
       const newIndex = pipelineNames.indexOf(pipeline.name);
       if (pipeline.index !== newIndex) {
         pipeline.index = newIndex;
-        dirty.push(pipeline);
+        idsToUpdatedIndices[pipeline.id] = newIndex;
       }
     });
-    this.updatePipelines(dirty);
-    this.refreshPipelines();
+    if (!isEmpty(idsToUpdatedIndices)) {
+      this.updatePipelines(idsToUpdatedIndices);
+      this.refreshPipelines();
+    }
   };
 
   public render() {
-    const { pipelineNames, pipelineReorderEnabled, tags } = this.state;
+    const { pipelineNames, strategyNames, pipelineReorderEnabled, tags } = this.state;
 
     return (
       <div className="execution-filters">
@@ -216,6 +229,20 @@ export class ExecutionFilters extends React.Component<IExecutionFiltersProps, IE
               </div>
             </FilterSection>
 
+            {strategyNames.length > 0 && (
+              <FilterSection heading="Strategies" expanded={true}>
+                <div className="form">
+                  <Pipelines
+                    names={strategyNames}
+                    tags={tags}
+                    dragEnabled={false}
+                    update={this.refreshExecutions}
+                    onSortEnd={this.handleSortEnd}
+                  />
+                </div>
+              </FilterSection>
+            )}
+
             <FilterSection heading="Status" expanded={true}>
               <div className="form">
                 <FilterStatus status="RUNNING" label="Running" refresh={this.refreshExecutions} />
@@ -264,7 +291,7 @@ const FilterCheckbox = (props: {
 
 const Pipeline = SortableElement(
   (props: { tag: IFilterTag; pipeline: string; dragEnabled: boolean; update: () => void }) => (
-    <div className="checkbox sortable">
+    <div className={classnames('checkbox sortable', { 'disable-user-select': props.dragEnabled })}>
       <div>
         <label>
           {props.dragEnabled && <DragHandle />}

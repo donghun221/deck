@@ -1,22 +1,23 @@
-import { APPLICATION_MODEL_BUILDER } from 'core/application/applicationModel.builder';
+import { ApplicationModelBuilder } from 'core/application/applicationModel.builder';
 
 describe('Controller: PipelineConfigCtrl', function() {
   var controller;
   var scope;
-  var applicationModelBuilder;
 
-  beforeEach(window.module(require('./pipelineConfig.controller.js').name, APPLICATION_MODEL_BUILDER));
+  beforeEach(window.module(require('./pipelineConfig.controller').name));
 
   beforeEach(
-    window.inject(function($rootScope, $controller, _applicationModelBuilder_) {
+    window.inject(function($rootScope, $controller) {
       scope = $rootScope.$new();
       controller = $controller;
-      applicationModelBuilder = _applicationModelBuilder_;
     }),
   );
 
   it('should initialize immediately if pipeline configs are already present', function() {
-    const application = applicationModelBuilder.createApplication('app', { key: 'pipelineConfigs', lazy: true });
+    const application = ApplicationModelBuilder.createApplicationForTests('app', {
+      key: 'pipelineConfigs',
+      lazy: true,
+    });
     application.pipelineConfigs.data = [{ id: 'a' }];
     application.pipelineConfigs.loaded = true;
 
@@ -32,7 +33,10 @@ describe('Controller: PipelineConfigCtrl', function() {
   });
 
   it('should wait until pipeline configs are loaded before initializing', function() {
-    const application = applicationModelBuilder.createApplication('app', { key: 'pipelineConfigs', lazy: true });
+    const application = ApplicationModelBuilder.createApplicationForTests('app', {
+      key: 'pipelineConfigs',
+      lazy: true,
+    });
     spyOn(application.pipelineConfigs, 'activate').and.callFake(angular.noop);
     let vm = controller('PipelineConfigCtrl', {
       $scope: scope,

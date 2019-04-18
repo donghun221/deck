@@ -1,20 +1,20 @@
 'use strict';
 
-import { APPLICATION_MODEL_BUILDER, ModalWizard } from '@spinnaker/core';
+import { ApplicationModelBuilder, ModalWizard } from '@spinnaker/core';
 
 describe('Controller: gceCreateLoadBalancerCtrl', function() {
   const angular = require('angular');
 
   // load the controller's module
   beforeEach(function() {
-    window.module(require('./createLoadBalancer.controller.js').name, APPLICATION_MODEL_BUILDER);
+    window.module(require('./createLoadBalancer.controller').name);
   });
 
   // Initialize the controller and a mock scope
   beforeEach(
-    window.inject(function($controller, $rootScope, applicationModelBuilder) {
+    window.inject(function($controller, $rootScope) {
       this.$scope = $rootScope.$new();
-      const app = applicationModelBuilder.createApplication('app', { key: 'loadBalancers', lazy: true });
+      const app = ApplicationModelBuilder.createApplicationForTests('app', { key: 'loadBalancers', lazy: true });
       this.ctrl = $controller('gceCreateLoadBalancerCtrl', {
         $scope: this.$scope,
         $uibModalInstance: { dismiss: angular.noop, result: { then: angular.noop } },
@@ -26,7 +26,7 @@ describe('Controller: gceCreateLoadBalancerCtrl', function() {
   );
 
   it('requires health check path for HTTP/S', function() {
-    var loadBalancer = {
+    const loadBalancer = {
       healthCheckProtocol: 'HTTP',
     };
 
@@ -45,7 +45,7 @@ describe('Controller: gceCreateLoadBalancerCtrl', function() {
   });
 
   it('should update name', function() {
-    var lb = this.$scope.loadBalancer;
+    const lb = this.$scope.loadBalancer;
     expect(lb).toBeDefined();
     expect(lb.name).toBeUndefined();
 

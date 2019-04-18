@@ -3,15 +3,13 @@ import IInjectorService = angular.auto.IInjectorService;
 
 import { StateParams, StateService, UIRouter } from '@uirouter/core';
 
-import { ApplicationModelBuilder } from '../application/applicationModel.builder';
 import { CacheInitializerService } from '../cache/cacheInitializer.service';
 import { ConfirmationModalService } from '../confirmationModal/confirmationModal.service';
 import { ExecutionDetailsSectionService } from 'core/pipeline/details/executionDetailsSection.service';
 import { ExecutionService } from '../pipeline/service/execution.service';
 import { InfrastructureSearchService } from '../search/infrastructure/infrastructureSearch.service';
-import { InfrastructureSearchServiceV2 } from 'core/search/infrastructure/infrastructureSearchV2.service';
 import { InsightFilterStateModel } from '../insight/insightFilterState.model';
-import { InstanceTypeService } from 'core/instance';
+import { InstanceTypeService, InstanceWriter } from 'core/instance';
 import { ManualJudgmentService } from '../pipeline/config/stages/manualJudgment/manualJudgment.service';
 import { OverrideRegistry } from '../overrideRegistry/override.registry';
 import { PageTitleService } from 'core/pageTitle';
@@ -21,7 +19,6 @@ import { SecurityGroupReader } from '../securityGroup/securityGroupReader.servic
 import { ServerGroupWriter } from '../serverGroup/serverGroupWriter.service';
 import { ImageReader } from 'core/image/image.reader';
 import { StateEvents } from './state.events';
-import { UrlBuilderService } from 'core/navigation/urlBuilder.service';
 import { SkinSelectionService } from '../cloudProvider/skinSelection/skinSelection.service';
 
 export abstract class ReactInject {
@@ -47,16 +44,15 @@ export class CoreReactInject extends ReactInject {
   public get $rootScope() { return this.$injector.get('$rootScope') as IScope; }
   public get $stateParams() { return this.$injector.get('$stateParams') as StateParams; }
   public get $uiRouter() { return this.$injector.get('$uiRouter') as UIRouter; }
-  public get applicationModelBuilder() { return this.$injector.get('applicationModelBuilder') as ApplicationModelBuilder; }
   public get cacheInitializer() { return this.$injector.get('cacheInitializer') as CacheInitializerService; }
   public get confirmationModalService() { return this.$injector.get('confirmationModalService') as ConfirmationModalService; }
   public get executionDetailsSectionService() { return this.$injector.get('executionDetailsSectionService') as ExecutionDetailsSectionService; }
   public get executionService() { return this.$injector.get('executionService') as ExecutionService; }
   public get imageReader() { return this.$injector.get('imageReader') as ImageReader; }
   public get infrastructureSearchService() { return this.$injector.get('infrastructureSearchService') as InfrastructureSearchService; }
-  public get infrastructureSearchServiceV2() { return this.$injector.get('infrastructureSearchServiceV2') as InfrastructureSearchServiceV2; }
   public get insightFilterStateModel() { return this.$injector.get('insightFilterStateModel') as InsightFilterStateModel; }
   public get instanceTypeService() { return this.$injector.get('instanceTypeService') as InstanceTypeService; }
+  public get instanceWriter() { return this.$injector.get('instanceWriter') as InstanceWriter; }
   public get manualJudgmentService() { return this.$injector.get('manualJudgmentService') as ManualJudgmentService; }
   public get overrideRegistry() { return this.$injector.get('overrideRegistry') as OverrideRegistry; }
   public get pageTitleService() { return this.$injector.get('pageTitleService') as PageTitleService; }
@@ -65,7 +61,6 @@ export class CoreReactInject extends ReactInject {
   public get securityGroupReader() { return this.$injector.get('securityGroupReader') as SecurityGroupReader; }
   public get serverGroupWriter() { return this.$injector.get('serverGroupWriter') as ServerGroupWriter; }
   public get stateEvents() { return this.$injector.get('stateEvents') as StateEvents; }
-  public get urlBuilderService() { return this.$injector.get('urlBuilderService') as UrlBuilderService; }
   public get skinSelectionService() { return this.$injector.get('skinSelectionService') as SkinSelectionService; }
 
   private createStateService(): StateService {

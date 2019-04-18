@@ -1,6 +1,7 @@
 import { IComponentOptions, IController, module } from 'angular';
 import { set } from 'lodash';
 import { IGceAutoHealingPolicy } from 'google/domain/autoHealingPolicy';
+import { IGceHealthCheckOption, parseHealthCheckUrl } from 'google/healthCheck/healthCheckUtils';
 
 class GceAutoHealingPolicySelector implements IController {
   public healthChecks: string[];
@@ -36,23 +37,31 @@ class GceAutoHealingPolicySelector implements IController {
       set(this.autoHealingPolicy, ['maxUnavailable', toDeleteKey], undefined);
     }
   }
+
+  public onHealthCheckChange(_healthCheck: IGceHealthCheckOption, healthCheckUrl: string) {
+    if (healthCheckUrl) {
+      const { healthCheckName, healthCheckKind } = parseHealthCheckUrl(healthCheckUrl);
+      this.autoHealingPolicy.healthCheck = healthCheckName;
+      this.autoHealingPolicy.healthCheckKind = healthCheckKind;
+    }
+  }
 }
 
-class GceAutoHealingPolicySelectorComponent implements IComponentOptions {
-  public bindings: any = {
+const gceAutoHealingPolicySelectorComponent: IComponentOptions = {
+  bindings: {
     onHealthCheckRefresh: '&',
     setAutoHealingPolicy: '&',
     healthChecks: '<',
     autoHealingPolicy: '<',
     enabled: '<',
     labelColumns: '@?',
-  };
-  public templateUrl = require('./autoHealingPolicySelector.component.html');
-  public controller: any = GceAutoHealingPolicySelector;
-}
+  },
+  templateUrl: require('./autoHealingPolicySelector.component.html'),
+  controller: GceAutoHealingPolicySelector,
+};
 
 export const GCE_AUTOHEALING_POLICY_SELECTOR = 'spinnaker.gce.autoHealingPolicy.selector.component';
 module(GCE_AUTOHEALING_POLICY_SELECTOR, []).component(
   'gceAutoHealingPolicySelector',
-  new GceAutoHealingPolicySelectorComponent(),
+  gceAutoHealingPolicySelectorComponent,
 );

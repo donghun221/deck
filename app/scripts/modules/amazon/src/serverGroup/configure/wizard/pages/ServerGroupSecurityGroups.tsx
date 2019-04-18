@@ -1,24 +1,19 @@
 import * as React from 'react';
 import { FormikProps } from 'formik';
-
-import { IWizardPageProps, wizardPage, FirewallLabels } from '@spinnaker/core';
+import { IWizardPageComponent } from '@spinnaker/core';
 
 import { SecurityGroupSelector } from '../securityGroups/SecurityGroupSelector';
 import { IAmazonServerGroupCommand } from '../../serverGroupConfiguration.service';
 import { ServerGroupSecurityGroupsRemoved } from '../securityGroups/ServerGroupSecurityGroupsRemoved';
 
-export interface IServerGroupSecurityGroupsState {}
+export interface IServerGroupSecurityGroupsProps {
+  formik: FormikProps<IAmazonServerGroupCommand>;
+}
 
-class ServerGroupSecurityGroupsImpl extends React.Component<
-  IWizardPageProps & FormikProps<IAmazonServerGroupCommand>,
-  IServerGroupSecurityGroupsState
-> {
-  public static get LABEL() {
-    return FirewallLabels.get('Firewalls');
-  }
-
-  public validate(values: IAmazonServerGroupCommand): { [key: string]: string } {
-    const errors: { [key: string]: string } = {};
+export class ServerGroupSecurityGroups extends React.Component<IServerGroupSecurityGroupsProps>
+  implements IWizardPageComponent<IAmazonServerGroupCommand> {
+  public validate(values: IAmazonServerGroupCommand) {
+    const errors = {} as any;
 
     if (values.viewState.dirty.securityGroups) {
       errors.securityGroups = 'You must acknowledge removed security groups.';
@@ -28,19 +23,20 @@ class ServerGroupSecurityGroupsImpl extends React.Component<
   }
 
   private onChange = (securityGroups: string[]) => {
-    this.props.setFieldValue('securityGroups', securityGroups);
+    this.props.formik.setFieldValue('securityGroups', securityGroups);
   };
 
   private acknowledgeRemovedGroups = () => {
-    this.props.values.viewState.dirty.securityGroups = null;
-    this.setState({});
+    const { viewState } = this.props.formik.values;
+    viewState.dirty.securityGroups = null;
+    this.props.formik.setFieldValue('viewState', viewState);
   };
 
   public render() {
-    const { values } = this.props;
+    const { values } = this.props.formik;
 
     return (
-      <div className="row">
+      <div className="container-fluid form-horizontal">
         <ServerGroupSecurityGroupsRemoved command={values} onClear={this.acknowledgeRemovedGroups} />
         <SecurityGroupSelector
           command={values}
@@ -52,5 +48,3 @@ class ServerGroupSecurityGroupsImpl extends React.Component<
     );
   }
 }
-
-export const ServerGroupSecurityGroups = wizardPage(ServerGroupSecurityGroupsImpl);

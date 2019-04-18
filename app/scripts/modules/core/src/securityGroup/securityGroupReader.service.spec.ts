@@ -1,37 +1,31 @@
 import { mock } from 'angular';
 
 import { API } from 'core/api/ApiService';
+import { Application } from 'core/application/application.model';
+import { ApplicationModelBuilder } from 'core/application/applicationModel.builder';
+import { InfrastructureCaches } from 'core/cache';
+import { ISecurityGroup } from 'core/domain';
+import { ISecurityGroupDetail, SECURITY_GROUP_READER, SecurityGroupReader } from './securityGroupReader.service';
 import {
   SECURITY_GROUP_TRANSFORMER_SERVICE,
   SecurityGroupTransformerService,
 } from './securityGroupTransformer.service';
-import { SECURITY_GROUP_READER, SecurityGroupReader, ISecurityGroupDetail } from './securityGroupReader.service';
-import { ISecurityGroup } from 'core/domain';
-import { APPLICATION_MODEL_BUILDER, ApplicationModelBuilder } from 'core/application/applicationModel.builder';
-import { Application } from 'core/application/application.model';
-import { InfrastructureCaches } from 'core/cache';
 
 describe('Service: securityGroupReader', function() {
-  let $q: ng.IQService,
-    $http: ng.IHttpBackendService,
-    $scope: ng.IRootScopeService,
-    applicationModelBuilder: ApplicationModelBuilder,
-    reader: SecurityGroupReader;
+  let $q: ng.IQService, $http: ng.IHttpBackendService, $scope: ng.IRootScopeService, reader: SecurityGroupReader;
 
-  beforeEach(mock.module(APPLICATION_MODEL_BUILDER, SECURITY_GROUP_TRANSFORMER_SERVICE, SECURITY_GROUP_READER));
+  beforeEach(mock.module(SECURITY_GROUP_TRANSFORMER_SERVICE, SECURITY_GROUP_READER));
   beforeEach(
     mock.inject(function(
       _$q_: ng.IQService,
       $httpBackend: ng.IHttpBackendService,
       $rootScope: ng.IRootScopeService,
-      _applicationModelBuilder_: ApplicationModelBuilder,
       _providerServiceDelegate_: any,
       securityGroupTransformer: SecurityGroupTransformerService,
       _securityGroupReader_: SecurityGroupReader,
     ) {
       reader = _securityGroupReader_;
       $http = $httpBackend;
-      applicationModelBuilder = _applicationModelBuilder_;
       $q = _$q_;
       $scope = $rootScope.$new();
 
@@ -55,33 +49,36 @@ describe('Service: securityGroupReader', function() {
   it('attaches load balancer to firewall usages', function() {
     let data: any[] = null;
 
-    const application: Application = applicationModelBuilder.createApplication(
+    const application: Application = ApplicationModelBuilder.createApplicationForTests(
       'app',
       {
         key: 'securityGroups',
-        data: [],
-        ready: () => $q.when(null),
+        loader: () => $q.resolve([]),
+        onLoad: (_app, _data) => $q.resolve(_data),
       },
       {
         key: 'serverGroups',
-        data: [],
-        ready: () => $q.when(null),
-        loaded: true,
+        loader: () => $q.resolve([]),
+        onLoad: (_app, _data) => $q.resolve(_data),
       },
       {
         key: 'loadBalancers',
-        data: [
-          {
-            name: 'my-elb',
-            account: 'test',
-            region: 'us-east-1',
-            securityGroups: ['not-cached'],
-          },
-        ],
-        ready: () => $q.when(null),
-        loaded: true,
+        loader: () =>
+          $q.resolve([
+            {
+              name: 'my-elb',
+              account: 'test',
+              region: 'us-east-1',
+              securityGroups: ['not-cached'],
+            },
+          ]),
+        onLoad: (_app, _data) => $q.resolve(_data),
       },
     );
+
+    application.serverGroups.refresh();
+    application.loadBalancers.refresh();
+    $scope.$digest();
 
     $http.expectGET(`${API.baseUrl}/securityGroups`).respond(200, {
       test: {
@@ -100,7 +97,7 @@ describe('Service: securityGroupReader', function() {
 
   it('adds firewall names across accounts, falling back to the ID if none found', function() {
     let details: ISecurityGroupDetail = null;
-    const application: Application = applicationModelBuilder.createApplication('app');
+    const application: Application = ApplicationModelBuilder.createApplicationForTests('app');
     application['securityGroupsIndex'] = {
       test: { 'us-east-1': { 'sg-2': { name: 'matched' } } },
       prod: { 'us-east-1': { 'sg-2': { name: 'matched-prod' } } },
@@ -131,35 +128,35 @@ describe('Service: securityGroupReader', function() {
 
   it('should clear cache, then reload firewalls and try again if a firewall is not found', function() {
     let data: ISecurityGroup[] = null;
-    const application: Application = applicationModelBuilder.createApplication(
+    const application: Application = ApplicationModelBuilder.createApplicationForTests(
       'app',
       {
         key: 'securityGroups',
       },
       {
         key: 'serverGroups',
-        ready: () => $q.when(null),
-        loaded: true,
-      },
-      {
-        securityGroupsIndex: {},
+        loader: () => $q.resolve([]),
+        onLoad: (_app, _data) => $q.resolve(_data),
       },
       {
         key: 'loadBalancers',
-        ready: () => $q.when(null),
-        loaded: true,
+        loader: () =>
+          $q.resolve([
+            {
+              name: 'my-elb',
+              account: 'test',
+              region: 'us-east-1',
+              securityGroups: ['not-cached'],
+            },
+          ]),
+        onLoad: (_app, _data) => $q.resolve(_data),
       },
     );
-    application.getDataSource('securityGroups').data = [];
-    application.getDataSource('serverGroups').data = [];
-    application.getDataSource('loadBalancers').data = [
-      {
-        name: 'my-elb',
-        account: 'test',
-        region: 'us-east-1',
-        securityGroups: ['not-cached'],
-      },
-    ];
+
+    application.getDataSource('securityGroups').refresh();
+    application.getDataSource('serverGroups').refresh();
+    application.getDataSource('loadBalancers').refresh();
+    $scope.$digest();
 
     $http.expectGET(API.baseUrl + '/securityGroups').respond(200, {
       test: {

@@ -10,13 +10,13 @@ const angular = require('angular');
 
 module.exports = angular
   .module('spinnaker.kubernetes.pipeline.stage.runJobStage', [
-    require('kubernetes/container/commands.component.js').name,
-    require('kubernetes/container/arguments.component.js').name,
-    require('kubernetes/container/environmentVariables.component.js').name,
-    require('kubernetes/container/volumes.component.js').name,
-    require('kubernetes/image/image.reader.js').name,
-    require('./runJobExecutionDetails.controller.js').name,
-    require('./configureJob.controller.js').name,
+    require('kubernetes/container/commands.component').name,
+    require('kubernetes/container/arguments.component').name,
+    require('kubernetes/container/environmentVariables.component').name,
+    require('kubernetes/container/volumes.component').name,
+    require('kubernetes/image/image.reader').name,
+    require('./runJobExecutionDetails.controller').name,
+    require('./configureJob.controller').name,
     KUBERNETES_IMAGE_ID_FILTER,
   ])
   .config(function() {
@@ -30,32 +30,36 @@ module.exports = angular
       validators: [{ type: 'requiredField', fieldName: 'account' }, { type: 'requiredField', fieldName: 'namespace' }],
     });
   })
-  .controller('kubernetesRunJobStageCtrl', function($scope, $uibModal) {
-    this.stage = $scope.stage;
-    this.pipeline = $scope.pipeline;
-    this.stage.cloudProvider = 'kubernetes';
-    this.stage.application = $scope.application.name;
+  .controller('kubernetesRunJobStageCtrl', [
+    '$scope',
+    '$uibModal',
+    function($scope, $uibModal) {
+      this.stage = $scope.stage;
+      this.pipeline = $scope.pipeline;
+      this.stage.cloudProvider = 'kubernetes';
+      this.stage.application = $scope.application.name;
 
-    if (this.stage.container && !this.stage.containers) {
-      this.stage.containers = [this.stage.container];
-      delete this.stage.container;
-    }
+      if (this.stage.container && !this.stage.containers) {
+        this.stage.containers = [this.stage.container];
+        delete this.stage.container;
+      }
 
-    this.configureJob = () => {
-      return $uibModal
-        .open({
-          templateUrl: require('./configureJob.html'),
-          controller: 'kubernetesConfigureJobController as ctrl',
-          size: 'lg',
-          resolve: {
-            stage: () => angular.copy(this.stage),
-            pipeline: () => this.pipeline,
-            application: () => $scope.application,
-          },
-        })
-        .result.then(stage => {
-          _.extend(this.stage, stage);
-        })
-        .catch(() => {});
-    };
-  });
+      this.configureJob = () => {
+        return $uibModal
+          .open({
+            templateUrl: require('./configureJob.html'),
+            controller: 'kubernetesConfigureJobController as ctrl',
+            size: 'lg',
+            resolve: {
+              stage: () => angular.copy(this.stage),
+              pipeline: () => this.pipeline,
+              application: () => $scope.application,
+            },
+          })
+          .result.then(stage => {
+            _.extend(this.stage, stage);
+          })
+          .catch(() => {});
+      };
+    },
+  ]);

@@ -13,6 +13,7 @@ export interface ILoadBalancerModalProps extends IModalComponentProps {
   app: Application;
   forPipelineConfig?: boolean;
   loadBalancer: ILoadBalancer;
+  command?: ILoadBalancerUpsertCommand; // optional, when ejecting from a wizard
   closeModal?(loadBalancerCommand: ILoadBalancerUpsertCommand): void; // provided by ReactModal
   dismissModal?(rejectReason?: any): void; // provided by ReactModal
 }
@@ -34,7 +35,13 @@ export class CreateLoadBalancerButton extends React.Component<ICreateLoadBalance
         const provider = CloudProviderRegistry.getValue(selectedProvider, 'loadBalancer', selectedSkin);
 
         if (provider.CreateLoadBalancerModal) {
-          provider.CreateLoadBalancerModal.show({ app: app, forPipelineConfig: false, loadBalancer: null });
+          provider.CreateLoadBalancerModal.show({
+            app: app,
+            application: app,
+            forPipelineConfig: false,
+            loadBalancer: null,
+            isNew: true,
+          });
         } else {
           // angular
           ModalInjector.modalService

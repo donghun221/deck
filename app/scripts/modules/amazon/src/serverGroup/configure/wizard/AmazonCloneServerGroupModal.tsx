@@ -1,20 +1,17 @@
 import * as React from 'react';
 import { get } from 'lodash';
-import { FormikErrors, FormikValues } from 'formik';
-import { IDeferred } from 'angular';
-import { $q } from 'ngimport';
-import { IModalServiceInstance } from 'angular-ui-bootstrap';
 
 import {
   Application,
-  IStage,
-  ReactInjector,
-  TaskMonitor,
-  WizardModal,
   FirewallLabels,
   IModalComponentProps,
-  noop,
+  IStage,
+  ReactInjector,
   ReactModal,
+  TaskMonitor,
+  WizardModal,
+  WizardPage,
+  noop,
 } from '@spinnaker/core';
 
 import { AwsReactInjector } from 'amazon/reactShims';
@@ -45,9 +42,6 @@ export interface IAmazonCloneServerGroupModalState {
   taskMonitor: TaskMonitor;
 }
 
-type CloneServerGroupModal = new () => WizardModal<IAmazonServerGroupCommand>;
-const CloneServerGroupModal = WizardModal as CloneServerGroupModal;
-
 export class AmazonCloneServerGroupModal extends React.Component<
   IAmazonCloneServerGroupModalProps,
   IAmazonCloneServerGroupModalState
@@ -57,8 +51,8 @@ export class AmazonCloneServerGroupModal extends React.Component<
     dismissModal: noop,
   };
 
+  private _isUnmounted = false;
   private refreshUnsubscribe: () => void;
-  private $uibModalInstanceEmulation: IModalServiceInstance & { deferred?: IDeferred<any> };
 
   public static show(props: IAmazonCloneServerGroupModalProps): Promise<IAmazonServerGroupCommand> {
     const modalProps = { dialogClassName: 'wizard-modal modal-lg' };
@@ -67,15 +61,6 @@ export class AmazonCloneServerGroupModal extends React.Component<
 
   constructor(props: IAmazonCloneServerGroupModalProps) {
     super(props);
-
-    const deferred = $q.defer();
-    const promise = deferred.promise;
-    this.$uibModalInstanceEmulation = {
-      result: promise,
-      close: () => this.props.dismissModal(),
-      dismiss: () => this.props.dismissModal(),
-    } as IModalServiceInstance;
-    Object.assign(this.$uibModalInstanceEmulation, { deferred });
 
     const requiresTemplateSelection = get(props, 'command.viewState.requiresTemplateSelection', false);
     if (!requiresTemplateSelection) {
@@ -89,7 +74,7 @@ export class AmazonCloneServerGroupModal extends React.Component<
       taskMonitor: new TaskMonitor({
         application: props.application,
         title: 'Creating your server group',
-        modalInstance: this.$uibModalInstanceEmulation,
+        modalInstance: TaskMonitor.modalInstanceEmulation(() => this.props.dismissModal()),
         onTaskComplete: this.onTaskComplete,
       }),
     };
@@ -100,12 +85,16 @@ export class AmazonCloneServerGroupModal extends React.Component<
     this.configureCommand();
   };
 
-  private onTaskComplete() {
+  private onTaskComplete = () => {
     this.props.application.serverGroups.refresh();
     this.props.application.serverGroups.onNextRefresh(null, this.onApplicationRefresh);
-  }
+  };
 
-  protected onApplicationRefresh(): void {
+  protected onApplicationRefresh = (): void => {
+    if (this._isUnmounted) {
+      return;
+    }
+
     const { command } = this.props;
     const { taskMonitor } = this.state;
     const cloneStage = taskMonitor.task.execution.stages.find((stage: IStage) => stage.type === 'cloneServerGroup');
@@ -134,18 +123,10 @@ export class AmazonCloneServerGroupModal extends React.Component<
         ReactInjector.$state.go(transitionTo, newStateParams);
       }
     }
-  }
+  };
 
   private initializeCommand = () => {
     const { command } = this.props;
-    if (command.viewState.imageId) {
-      const foundImage = command.backingData.packageImages.filter(image => {
-        return image.amis[command.region] && image.amis[command.region].includes(command.viewState.imageId);
-      });
-      if (foundImage.length) {
-        command.amiName = foundImage[0].imageName;
-      }
-    }
 
     command.credentialsChanged(command);
     command.regionChanged(command);
@@ -155,24 +136,31 @@ export class AmazonCloneServerGroupModal extends React.Component<
   private configureCommand = () => {
     const { application, command } = this.props;
     AwsReactInjector.awsServerGroupConfigurationService.configureCommand(application, command).then(() => {
-      if (['clone', 'create'].includes(command.viewState.mode)) {
-        if (!command.backingData.packageImages.length) {
-          command.viewState.useAllImageSelection = true;
-        }
-      }
-
       this.initializeCommand();
       this.setState({ loaded: true, requiresTemplateSelection: false });
     });
   };
 
+  private normalizeCommand = ({ tags }: IAmazonServerGroupCommand) => {
+    if (!tags) {
+      return;
+    }
+    Object.keys(tags).forEach(key => {
+      if (!key.length && !tags[key].length) {
+        delete tags[key];
+      }
+    });
+  };
+
   public componentWillUnmount(): void {
+    this._isUnmounted = true;
     if (this.refreshUnsubscribe) {
       this.refreshUnsubscribe();
     }
   }
 
   private submit = (command: IAmazonServerGroupCommand): void => {
+    this.normalizeCommand(command);
     const forPipelineConfig = command.viewState.mode === 'editPipeline' || command.viewState.mode === 'createPipeline';
     if (forPipelineConfig) {
       this.props.closeModal && this.props.closeModal(command);
@@ -181,11 +169,6 @@ export class AmazonCloneServerGroupModal extends React.Component<
         ReactInjector.serverGroupWriter.cloneServerGroup(command, this.props.application),
       );
     }
-  };
-
-  private validate = (_values: FormikValues): FormikErrors<IAmazonServerGroupCommand> => {
-    const errors = {} as FormikErrors<IAmazonServerGroupCommand>;
-    return errors;
   };
 
   public render() {
@@ -204,7 +187,7 @@ export class AmazonCloneServerGroupModal extends React.Component<
     }
 
     return (
-      <CloneServerGroupModal
+      <WizardModal<IAmazonServerGroupCommand>
         heading={title}
         initialValues={command}
         loading={!loaded}
@@ -212,17 +195,61 @@ export class AmazonCloneServerGroupModal extends React.Component<
         dismissModal={dismissModal}
         closeModal={this.submit}
         submitButtonLabel={command.viewState.submitButtonLabel}
-        validate={this.validate}
-      >
-        {/* <ServerGroupTemplateSelection /> */}
-        <ServerGroupBasicSettings app={application} done={true} />
-        <ServerGroupLoadBalancers done={true} />
-        <ServerGroupSecurityGroups done={true} />
-        <ServerGroupInstanceType done={true} />
-        <ServerGroupCapacity done={true} />
-        <ServerGroupZones done={true} />
-        <ServerGroupAdvancedSettings app={application} done={true} />
-      </CloneServerGroupModal>
+        render={({ formik, nextIdx, wizard }) => (
+          <>
+            <WizardPage
+              label="Basic Settings"
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => <ServerGroupBasicSettings ref={innerRef} formik={formik} app={application} />}
+            />
+
+            <WizardPage
+              label="Load Balancers"
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => <ServerGroupLoadBalancers ref={innerRef} formik={formik} />}
+            />
+
+            <WizardPage
+              label={FirewallLabels.get('Firewalls')}
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => <ServerGroupSecurityGroups ref={innerRef} formik={formik} />}
+            />
+
+            <WizardPage
+              label="Instance Type"
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => <ServerGroupInstanceType ref={innerRef} formik={formik} />}
+            />
+
+            <WizardPage
+              label="Capacity"
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => <ServerGroupCapacity ref={innerRef} formik={formik} />}
+            />
+
+            <WizardPage
+              label="Availability Zones"
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => <ServerGroupZones ref={innerRef} formik={formik} />}
+            />
+
+            <WizardPage
+              label="Advanced Settings"
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => (
+                <ServerGroupAdvancedSettings ref={innerRef} formik={formik} app={application} />
+              )}
+            />
+          </>
+        )}
+      />
     );
   }
 }

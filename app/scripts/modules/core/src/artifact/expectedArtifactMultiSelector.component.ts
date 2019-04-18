@@ -21,18 +21,18 @@ class ExpectedArtifactMultiSelectorCtrl implements IController {
   }
 }
 
-class ExpectedArtifactMultiSelectorComponent implements IComponentOptions {
-  public bindings: any = {
+const expectedArtifactMultiSelectorComponent: IComponentOptions = {
+  bindings: {
     command: '=',
     expectedArtifacts: '<',
     artifactLabel: '@',
     idsField: '@',
     helpFieldKey: '@',
     showIcons: '<',
-  };
-  public controller: any = ExpectedArtifactMultiSelectorCtrl;
-  public controllerAs = 'ctrl';
-  public template = `
+  },
+  controller: ExpectedArtifactMultiSelectorCtrl,
+  controllerAs: 'ctrl',
+  template: `
       <render-if-feature feature="artifacts">
         <ng-form name="artifacts">
           <stage-config-field label="{{ctrl.artifactLabel}}" help-key="{{ctrl.helpFieldKey}}">
@@ -46,7 +46,7 @@ class ExpectedArtifactMultiSelectorComponent implements IComponentOptions {
                   height="16"
                   class="artifact-icon"
                   ng-src="{{ ctrl.iconPath($item) }}" />
-                {{ $item | summarizeExpectedArtifact }}
+                {{ $item.displayName }}
               </ui-select-match>
               <ui-select-choices repeat="expected.id as expected in ctrl.expectedArtifacts">
                 <img
@@ -55,17 +55,17 @@ class ExpectedArtifactMultiSelectorComponent implements IComponentOptions {
                   height="16"
                   class="artifact-icon"
                   ng-src="{{ ctrl.iconPath(expected) }}" />
-                <span>{{ expected | summarizeExpectedArtifact }}</span>
+                <span>{{ expected.displayName }}</span>
               </ui-select-choices>
             </ui-select>
           </stage-config-field>
         </ng-form>
       </render-if-feature>
-  `;
-}
+  `,
+};
 
 export const EXPECTED_ARTIFACT_MULTI_SELECTOR_COMPONENT = 'spinnaker.core.artifacts.expected.multiSelector';
 module(EXPECTED_ARTIFACT_MULTI_SELECTOR_COMPONENT, []).component(
   'expectedArtifactMultiSelector',
-  new ExpectedArtifactMultiSelectorComponent(),
+  expectedArtifactMultiSelectorComponent,
 );

@@ -1,28 +1,19 @@
 import { module, IComponentController, IScope, IComponentOptions } from 'angular';
 import { includes } from 'lodash';
 
-import { InfrastructureCaches } from 'core/cache';
 import { CloudProviderRegistry } from 'core/cloudProvider';
 import { ModalWizard } from 'core/modal/wizard/ModalWizard';
 import { InstanceTypeService, IInstanceTypeCategory } from 'core/instance';
-import { ServerGroupConfigurationService } from './serverGroupConfiguration.service';
 import { IServerGroupCommand } from './serverGroupCommandBuilder.service';
 
 class V2InstanceArchetypeSelectorController implements IComponentController {
   private command: IServerGroupCommand;
-  public refreshing = false;
-  public refreshTime = 0;
   public getInstanceBuilderTemplate: any;
   public onProfileChanged: any;
   public onTypeChanged: any;
 
-  public constructor(
-    public $scope: IScope,
-    private instanceTypeService: InstanceTypeService,
-    private serverGroupConfigurationService: ServerGroupConfigurationService,
-  ) {
-    'ngInject';
-  }
+  public static $inject = ['$scope', 'instanceTypeService'];
+  public constructor(public $scope: IScope, private instanceTypeService: InstanceTypeService) {}
 
   public $onInit(): void {
     const { $scope } = this;
@@ -43,14 +34,6 @@ class V2InstanceArchetypeSelectorController implements IComponentController {
     if (this.command.region && this.command.instanceType && !this.command.viewState.instanceProfile) {
       this.selectInstanceType('custom');
     }
-    // if there are no instance types in the cache, try to reload them
-    this.instanceTypeService.getAllTypesByRegion(this.command.selectedProvider).then(results => {
-      if (!results || !Object.keys(results).length) {
-        this.refreshInstanceTypes();
-      }
-    });
-
-    this.setInstanceTypeRefreshTime();
 
     this.getInstanceBuilderTemplate = CloudProviderRegistry.getValue.bind(
       CloudProviderRegistry,
@@ -68,7 +51,7 @@ class V2InstanceArchetypeSelectorController implements IComponentController {
       $scope.selectedInstanceProfile = null;
     }
     this.command.viewState.instanceProfile = type;
-    this.onProfileChanged(type);
+    this.onProfileChanged && this.onProfileChanged(type);
     $scope.instanceProfiles.forEach((profile: IInstanceTypeCategory) => {
       if (profile.type === type) {
         $scope.selectedInstanceProfile = profile;
@@ -102,36 +85,23 @@ class V2InstanceArchetypeSelectorController implements IComponentController {
         this.command.viewState.instanceTypeDetails = instanceTypeDetails;
       });
 
-    this.onTypeChanged(this.command.instanceType);
-  };
-
-  private setInstanceTypeRefreshTime = () => {
-    this.refreshTime = InfrastructureCaches.get('instanceTypes').getStats().ageMax;
-  };
-
-  public refreshInstanceTypes = () => {
-    this.refreshing = true;
-    this.serverGroupConfigurationService.refreshInstanceTypes(this.command.selectedProvider, this.command).then(() => {
-      this.setInstanceTypeRefreshTime();
-      this.refreshing = false;
-    });
+    this.onTypeChanged && this.onTypeChanged(this.command.instanceType);
   };
 }
 
-export class V2InstanceArchetypeSelector implements IComponentOptions {
-  public bindings: any = {
+export const v2InstanceArchetypeSelector: IComponentOptions = {
+  bindings: {
     command: '<',
     onProfileChanged: '=',
     onTypeChanged: '=',
-  };
-
-  public controller: any = V2InstanceArchetypeSelectorController;
-  public controllerAs = 'instanceArchetypeCtrl';
-  public templateUrl = require('./v2instanceArchetype.directive.html');
-}
+  },
+  controller: V2InstanceArchetypeSelectorController,
+  controllerAs: 'instanceArchetypeCtrl',
+  templateUrl: require('./v2instanceArchetype.directive.html'),
+};
 
 export const V2_INSTANCE_ARCHETYPE_SELECTOR = 'spinnaker.core.serverGroup.configure.common.v2instanceArchetypeSelector';
 module(V2_INSTANCE_ARCHETYPE_SELECTOR, [
-  require('./costFactor.js').name,
-  require('core/presentation/isVisible/isVisible.directive.js').name,
-]).component('v2InstanceArchetypeSelector', new V2InstanceArchetypeSelector());
+  require('./costFactor').name,
+  require('core/presentation/isVisible/isVisible.directive').name,
+]).component('v2InstanceArchetypeSelector', v2InstanceArchetypeSelector);

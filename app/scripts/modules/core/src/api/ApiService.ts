@@ -2,12 +2,13 @@ import { IPromise, IRequestConfig } from 'angular';
 import { $q, $http } from 'ngimport';
 import { AuthenticationInitializer } from '../authentication/AuthenticationInitializer';
 import { SETTINGS } from 'core/config/settings';
+import { ICache } from 'core/cache';
 
 export interface IRequestBuilder {
   config?: IRequestConfig;
   one?: (...urls: string[]) => IRequestBuilder;
   all?: (...urls: string[]) => IRequestBuilder;
-  useCache?: (useCache: boolean) => IRequestBuilder;
+  useCache?: (useCache: boolean | ICache) => IRequestBuilder;
   withParams?: (data: any) => IRequestBuilder;
   data?: (data: any) => IRequestBuilder;
   get?: (data?: any) => IPromise<any>;
@@ -15,6 +16,14 @@ export interface IRequestBuilder {
   post?: (data: any) => IPromise<any>;
   remove?: (data: any) => IPromise<any>;
   put?: (data: any) => IPromise<any>;
+}
+
+export class InvalidAPIResponse extends Error {
+  public data: { message: string };
+  constructor(message: string, public originalResult: any) {
+    super(message);
+    this.data = { message };
+  }
 }
 
 export class API {
@@ -25,6 +34,8 @@ export class API {
     },
   };
 
+  public static readonly invalidContentMessage = 'API response was neither JSON nor zero-length html or text';
+
   private static getData(result: any): IPromise<any> {
     return $q((resolve, reject) => {
       const contentType = result.headers('content-type');
@@ -34,7 +45,7 @@ export class API {
         const isZeroLengthText = contentType.includes('text/plain') && result.data === '';
         if (!(isJson || isZeroLengthHtml || isZeroLengthText)) {
           AuthenticationInitializer.reauthenticateUser();
-          reject(result);
+          reject(new InvalidAPIResponse(API.invalidContentMessage, result));
         }
       }
 
@@ -54,7 +65,7 @@ export class API {
     };
   }
 
-  private static useCacheFn(config: IRequestConfig): (useCache: boolean) => IRequestBuilder {
+  private static useCacheFn(config: IRequestConfig): (useCache: boolean | ICache) => IRequestBuilder {
     return (useCache = true) => {
       config.cache = useCache;
       return this.baseReturn(config);

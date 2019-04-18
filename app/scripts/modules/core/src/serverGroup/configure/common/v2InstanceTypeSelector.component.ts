@@ -13,13 +13,15 @@ class V2InstanceTypeSelectorController implements IComponentController {
   private instanceProfile: string;
   private instanceTypes: any;
 
-  constructor(private $scope: IScope, private instanceTypeService: InstanceTypeService) {
-    'ngInject';
-  }
+  public static $inject = ['$scope', 'instanceTypeService'];
+  constructor(private $scope: IScope, private instanceTypeService: InstanceTypeService) {}
 
   public $onInit(): void {
     this.instanceProfile = this.command.viewState.instanceProfile;
-    this.instanceTypes = this.command.backingData.filtered.instanceTypes;
+    this.instanceTypes =
+      this.command.backingData && this.command.backingData.filtered
+        ? this.command.backingData.filtered.instanceTypes
+        : [];
     this.updateFamilies();
   }
 
@@ -29,7 +31,8 @@ class V2InstanceTypeSelectorController implements IComponentController {
       this.instanceProfile = this.command.viewState.instanceProfile;
       updateProfiles = true;
     }
-    if (this.command.backingData.filtered.instanceTypes !== this.instanceTypes) {
+    const hasFilteredBackingData = this.command.backingData && this.command.backingData.filtered;
+    if (hasFilteredBackingData && this.command.backingData.filtered.instanceTypes !== this.instanceTypes) {
       this.instanceTypes = this.command.backingData.filtered.instanceTypes;
       updateProfiles = true;
     }
@@ -74,7 +77,7 @@ class V2InstanceTypeSelectorController implements IComponentController {
         this.command.viewState.instanceTypeDetails = instanceTypeDetails;
       });
 
-    this.onTypeChanged(this.command.instanceType);
+    this.onTypeChanged && this.onTypeChanged(this.command.instanceType);
   };
 
   public getStorageDescription = (instanceType: IPreferredInstanceType) => {
@@ -92,16 +95,15 @@ class V2InstanceTypeSelectorController implements IComponentController {
   };
 }
 
-export class V2InstanceTypeSelector implements IComponentOptions {
-  public bindings: any = {
+export const v2InstanceTypeSelector: IComponentOptions = {
+  bindings: {
     command: '<',
     onTypeChanged: '=',
-  };
-
-  public controller: any = V2InstanceTypeSelectorController;
-  public controllerAs = 'instanceTypeCtrl';
-  public templateUrl = require('./instanceTypeDirective.html');
-}
+  },
+  controller: V2InstanceTypeSelectorController,
+  controllerAs: 'instanceTypeCtrl',
+  templateUrl: require('./instanceTypeDirective.html'),
+};
 
 export const V2_INSTANCE_TYPE_SELECTOR = 'spinnaker.core.serverGroup.configure.common.v2instanceTypeSelector';
-module(V2_INSTANCE_TYPE_SELECTOR, []).component('v2InstanceTypeSelector', new V2InstanceTypeSelector());
+module(V2_INSTANCE_TYPE_SELECTOR, []).component('v2InstanceTypeSelector', v2InstanceTypeSelector);

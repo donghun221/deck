@@ -5,6 +5,8 @@ import { HtmlRenderer, Parser } from 'commonmark';
 import { Application } from 'core/application';
 import { IExecution, IExecutionStage, IExecutionStageSummary, IStage } from 'core/domain';
 import { Registry } from 'core/registry';
+import { ConfirmationModalService } from 'core/confirmationModal';
+import { ExecutionService } from 'core/pipeline';
 
 export class StageSummaryController implements IController {
   public application: Application;
@@ -16,9 +18,14 @@ export class StageSummaryController implements IController {
   private parser: Parser = new Parser();
   private renderer: HtmlRenderer = new HtmlRenderer();
 
-  constructor(private $scope: IScope, private $stateParams: StateParams, private $state: StateService) {
-    'ngInject';
-  }
+  public static $inject = ['$scope', '$stateParams', '$state', 'confirmationModalService', 'executionService'];
+  constructor(
+    private $scope: IScope,
+    private $stateParams: StateParams,
+    private $state: StateService,
+    private confirmationModalService: ConfirmationModalService,
+    private executionService: ExecutionService,
+  ) {}
 
   public $onInit(): void {
     this.updateScope();
@@ -44,7 +51,7 @@ export class StageSummaryController implements IController {
     if (stageConfig && stageConfig.executionStepLabelUrl) {
       return stageConfig.executionStepLabelUrl;
     } else {
-      return require('../../pipeline/config/stages/core/stepLabel.html');
+      return require('../config/stages/common/stepLabel.html');
     }
   }
 
@@ -63,6 +70,10 @@ export class StageSummaryController implements IController {
   }
 
   public isRestartable(stage?: IStage): boolean {
+    if (stage.isRunning || stage.isCompleted) {
+      return false;
+    }
+
     const stageConfig = Registry.pipeline.getStageConfig(stage);
     if (!stageConfig || stage.isRestarting === true) {
       return false;
@@ -74,6 +85,50 @@ export class StageSummaryController implements IController {
     }
 
     return stageConfig.restartable || false;
+  }
+
+  public canManuallySkip(): boolean {
+    const topLevelStage = this.getTopLevelStage();
+    return this.stage.isRunning && topLevelStage && topLevelStage.context.canManuallySkip;
+  }
+
+  public getTopLevelStage(): IExecutionStage {
+    let parentStageId = this.stage.parentStageId,
+      topLevelStage: IExecutionStage = this.stage;
+    while (parentStageId) {
+      topLevelStage = this.execution.stages.find(stage => stage.id === parentStageId);
+      parentStageId = topLevelStage.parentStageId;
+    }
+    return topLevelStage;
+  }
+
+  public openManualSkipStageModal(): void {
+    const topLevelStage = this.getTopLevelStage();
+    this.confirmationModalService.confirm({
+      header: 'Really skip this stage?',
+      buttonText: 'Skip',
+      askForReason: true,
+      submitJustWithReason: true,
+      body: `
+        <div class="alert alert-warning">
+          <b>Warning:</b> Skipping this stage may have unpredictable results.
+          <ul>
+            <li>Mutating changes initiated by this stage will continue and will need to be cleaned up manually.</li>
+            <li>Downstream stages that depend on the outputs of this stage may fail or behave unexpectedly.</li>
+          </ul>
+        </div>
+      `,
+      submitMethod: (reason: string) =>
+        this.executionService
+          .patchExecution(this.execution.id, topLevelStage.id, { manualSkip: true, reason })
+          .then(() =>
+            this.executionService.waitUntilExecutionMatches(this.execution.id, execution => {
+              const updatedStage = execution.stages.find(stage => stage.id === topLevelStage.id);
+              return updatedStage && updatedStage.status === 'SKIPPED';
+            }),
+          )
+          .then(updated => this.executionService.updateExecution(this.application, updated)),
+    });
   }
 
   public toggleDetails(index: number): void {
@@ -93,17 +148,17 @@ export class StageSummaryController implements IController {
   }
 }
 
-export class StageSummaryComponent implements IComponentOptions {
-  public bindings: any = {
+export const stageSummaryComponent: IComponentOptions = {
+  bindings: {
     application: '<',
     execution: '<',
     sourceUrl: '<',
     stage: '<',
     stageSummary: '<',
-  };
-  public controller: any = StageSummaryController;
-  public template = '<div className="stage-summary-wrapper" ng-include="$ctrl.sourceUrl"></div>';
-}
+  },
+  controller: StageSummaryController,
+  template: '<div className="stage-summary-wrapper" ng-include="$ctrl.sourceUrl"></div>',
+};
 
 export const STAGE_SUMMARY_COMPONENT = 'spinnaker.core.pipeline.stageSummary.component';
-module(STAGE_SUMMARY_COMPONENT, []).component('stageSummary', new StageSummaryComponent());
+module(STAGE_SUMMARY_COMPONENT, []).component('stageSummary', stageSummaryComponent);

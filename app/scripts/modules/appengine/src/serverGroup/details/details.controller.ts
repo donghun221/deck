@@ -57,6 +57,17 @@ class AppengineServerGroupDetailsController implements IController {
       </table>`;
   }
 
+  public static $inject = [
+    '$state',
+    '$scope',
+    '$uibModal',
+    'serverGroup',
+    'app',
+    'serverGroupWriter',
+    'confirmationModalService',
+    'appengineServerGroupWriter',
+    'appengineServerGroupCommandBuilder',
+  ];
   constructor(
     private $state: any,
     private $scope: IPrivateScope,
@@ -68,8 +79,6 @@ class AppengineServerGroupDetailsController implements IController {
     private appengineServerGroupWriter: AppengineServerGroupWriter,
     private appengineServerGroupCommandBuilder: AppengineServerGroupCommandBuilder,
   ) {
-    'ngInject';
-
     this.app
       .ready()
       .then(() => this.extractServerGroup(serverGroup))
@@ -386,18 +395,23 @@ class AppengineServerGroupDetailsController implements IController {
     serverGroup: IServerGroup,
     app: Application,
   ): { [key: string]: number } {
-    const loadBalancer = app.getDataSource('loadBalancers').data.find((toCheck: IAppengineLoadBalancer): boolean => {
-      const allocations = get(toCheck, 'split.allocations', {});
-      const enabledServerGroups = Object.keys(allocations);
-      return enabledServerGroups.includes(serverGroup.name);
-    });
+    const loadBalancer = app.getDataSource('loadBalancers').data.find(
+      (toCheck: IAppengineLoadBalancer): boolean => {
+        const allocations = get(toCheck, 'split.allocations', {});
+        const enabledServerGroups = Object.keys(allocations);
+        return enabledServerGroups.includes(serverGroup.name);
+      },
+    );
 
     if (loadBalancer) {
       let allocations = cloneDeep(loadBalancer.split.allocations);
       delete allocations[serverGroup.name];
       const denominator = reduce(allocations, (partialSum: number, allocation: number) => partialSum + allocation, 0);
       const precision = loadBalancer.split.shardBy === 'COOKIE' ? 1000 : 100;
-      allocations = mapValues(allocations, allocation => Math.round(allocation / denominator * precision) / precision);
+      allocations = mapValues(
+        allocations,
+        allocation => Math.round((allocation / denominator) * precision) / precision,
+      );
       return allocations;
     } else {
       return null;

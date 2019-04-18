@@ -1,109 +1,97 @@
 import * as React from 'react';
-import * as classNames from 'classnames';
-import { Formik, Form, FormikProps, FormikValues } from 'formik';
+import { Formik, Form, FormikProps } from 'formik';
 import { Modal } from 'react-bootstrap';
+import { without, merge } from 'lodash';
 
-import { TaskMonitor } from 'core';
-import { IModalComponentProps, Tooltip } from 'core/presentation';
+import { TaskMonitor } from 'core/task';
 import { NgReact } from 'core/reactShims';
 import { Spinner } from 'core/widgets';
 
+import { IModalComponentProps } from '../../presentation/ReactModal';
 import { ModalClose } from '../buttons/ModalClose';
 import { SubmitButton } from '../buttons/SubmitButton';
+import { WizardPage } from './WizardPage';
+import { WizardStepLabel } from './WizardStepLabel';
 
-import { IWizardPageProps, IWizardPageValidate } from './WizardPage';
-
-export interface IWizardPageData {
-  element: HTMLElement;
-  label: string;
-  props: IWizardPageProps;
-  validate: IWizardPageValidate;
+export interface IWizardPageInjectedProps<T> {
+  formik: FormikProps<T>;
+  /** WizardModal supplies this incrementor fn, which should be used to supply the WizardPage order prop */
+  nextIdx: () => number;
+  /** The WizardModal Callback API for use by WizardPage component */
+  wizard: IWizardModalApi;
 }
 
-export interface IWizardModalProps extends IModalComponentProps {
+export interface IWizardModalProps<T> extends IModalComponentProps {
+  formClassName?: string;
   heading: string;
-  hideSections?: Set<string>;
-  initialValues: FormikValues;
+  initialValues: T;
   loading?: boolean;
+  render: (props: IWizardPageInjectedProps<T>) => React.ReactNode;
   submitButtonLabel: string;
   taskMonitor: TaskMonitor;
-  validate: IWizardPageValidate;
-  closeModal?(result?: any): void; // provided by ReactModal
-  dismissModal?(rejection?: any): void; // provided by ReactModal
+  validate?(values: T): any;
 }
 
-export interface IWizardModalState {
-  currentPage: IWizardPageData;
-  dirtyPages: Set<string>;
-  pageErrors: { [pageName: string]: { [key: string]: string } };
-  formInvalid: boolean;
-  pages: string[];
-  waiting: Set<string>;
+export interface IWizardModalState<T> {
+  currentPage: WizardPage<T>;
+  initialized: boolean;
+  pages: Array<WizardPage<T>>;
 }
 
-export class WizardModal<T extends FormikValues> extends React.Component<IWizardModalProps, IWizardModalState> {
-  private pages: { [label: string]: IWizardPageData } = {};
-  private stepsElement: HTMLDivElement;
+export interface IWizardModalApi {
+  onWizardPageAdded: (wizardPage: WizardPage<any>) => void;
+  onWizardPageRemoved: (wizardPage: WizardPage<any>) => void;
+  /**
+   * The wrapped WizardPage component can call this when its state changes
+   * and WizardModal will force a re-render
+   */
+  onWizardPageStateChanged: (_page: WizardPage<any>) => void;
+}
 
-  constructor(props: IWizardModalProps) {
-    super(props);
+export class WizardModal<T = {}> extends React.Component<IWizardModalProps<T>, IWizardModalState<T>>
+  implements IWizardModalApi {
+  private stepsElement = React.createRef<HTMLDivElement>();
+  private formikRef = React.createRef<Formik<any>>();
+  public state: IWizardModalState<T> = { pages: [], initialized: false, currentPage: null };
 
-    this.state = {
-      currentPage: null,
-      dirtyPages: new Set<string>(),
-      formInvalid: false,
-      pages: [],
-      pageErrors: {},
-      waiting: new Set(),
-    };
+  private static incrementer() {
+    let idx = 0;
+    return () => ++idx;
   }
 
-  private setCurrentPage = (pageState: IWizardPageData): void => {
-    if (this.stepsElement) {
-      this.stepsElement.scrollTop = pageState.element.offsetTop;
-    }
-    this.setState({ currentPage: pageState });
-  };
-
-  private onMount = (element: any): void => {
-    if (element) {
-      const label = element.state.label;
-      this.pages[label] = {
-        element: element.element,
-        label,
-        validate: element.validate,
-        props: element.props,
-      };
-    }
-  };
-
-  private dirtyCallback = (name: string, dirty: boolean): void => {
-    const dirtyPages = new Set(this.state.dirtyPages);
-    if (dirty) {
-      dirtyPages.add(name);
-    } else {
-      dirtyPages.delete(name);
-    }
-    this.setState({ dirtyPages });
-  };
+  public get formik() {
+    return this.formikRef.current && (this.formikRef.current.getFormikBag() as FormikProps<T>);
+  }
 
   public componentDidMount(): void {
-    const pages = this.getVisiblePageNames();
-    this.setState({ pages: this.getVisiblePageNames(), currentPage: this.pages[pages[0]] });
+    this.setState({ initialized: true });
   }
 
-  public componentWillReceiveProps(): void {
-    this.setState({ pages: this.getVisiblePageNames() });
-  }
+  public onWizardPageAdded = (wizardPage: WizardPage<T>): void => {
+    this.setState(prevState => {
+      const pages = prevState.pages.concat(wizardPage);
+      const currentPage = prevState.currentPage || pages[0];
+      return { pages, currentPage };
+    }, this.revalidate);
+  };
 
-  public componentWillUnmount(): void {
-    this.pages = {};
-  }
+  public onWizardPageRemoved = (wizardPage: WizardPage<T>): void => {
+    this.setState(prevState => {
+      const pages = without(prevState.pages, wizardPage);
+      const currentPage = prevState.currentPage || pages[0];
+      return { pages, currentPage };
+    }, this.revalidate);
+  };
+
+  private setCurrentPage = (currentPage: WizardPage<T>): void => {
+    if (currentPage && this.stepsElement.current && currentPage.ref.current) {
+      this.stepsElement.current.scrollTop = currentPage.ref.current.offsetTop;
+    }
+    this.setState({ currentPage });
+  };
 
   private handleStepsScroll = (event: React.UIEvent<HTMLDivElement>): void => {
-    // Cannot precalculate because sections can shrink/grow.
-    // Could optimize by having a callback every time the size changes... but premature
-    const pageTops = this.state.pages.map(pageName => this.pages[pageName].element.offsetTop);
+    const pageTops = this.state.pages.map(page => page.ref.current.offsetTop);
     const scrollTop = event.currentTarget.scrollTop;
 
     let reversedCurrentPage = pageTops.reverse().findIndex(pageTop => scrollTop >= pageTop);
@@ -111,124 +99,107 @@ export class WizardModal<T extends FormikValues> extends React.Component<IWizard
       reversedCurrentPage = pageTops.length - 1;
     }
     const currentPageIndex = pageTops.length - (reversedCurrentPage + 1);
-    const currentPage = this.pages[this.state.pages[currentPageIndex]];
+    const currentPage = this.state.pages[currentPageIndex];
 
-    this.setState({ currentPage });
+    if (currentPage !== this.state.currentPage) {
+      this.setState({ currentPage });
+    }
   };
 
-  private getFilteredChildren(): React.ReactChild[] {
-    return React.Children.toArray(this.props.children).filter((child: any): boolean => {
-      if (!child || !child.type || !child.type.label) {
-        return false;
-      }
-      return !this.props.hideSections || !this.props.hideSections.has(child.type.label);
-    });
-  }
-
-  private getVisiblePageNames(): string[] {
-    return this.getFilteredChildren().map((child: any) => child.type.label);
-  }
-
-  private validate = (values: FormikValues): any => {
-    const errors: Array<{ [key: string]: string }> = [];
-    const newPageErrors: { [pageName: string]: { [key: string]: string } } = {};
-
-    this.state.pages.forEach(pageName => {
-      const pageErrors = this.pages[pageName].validate ? this.pages[pageName].validate(values) : {};
-      if (Object.keys(pageErrors).length > 0) {
-        newPageErrors[pageName] = pageErrors;
-      } else {
-        delete newPageErrors[pageName];
-      }
-      errors.push(pageErrors);
-    });
-    errors.push(this.props.validate(values));
-    const flattenedErrors = Object.assign({}, ...errors);
-    this.setState({ pageErrors: newPageErrors, formInvalid: Object.keys(flattenedErrors).length > 0 });
-    return flattenedErrors;
+  private validate = (values: T): any => {
+    const validateProp = this.props.validate || (() => ({}));
+    const errorsForPages: object[] = this.state.pages.map(page => page.validate(values)).concat(validateProp(values));
+    return errorsForPages.reduce((mergedErrors, errorsForPage) => merge(mergedErrors, errorsForPage), {});
   };
 
-  private revalidate(values: FormikValues, setErrors: (errors: any) => void) {
-    setErrors(this.validate(values));
+  /** Rerender everything when a WizardPage requests it */
+  public onWizardPageStateChanged(_page: WizardPage<T>) {
+    this.forceUpdate();
   }
 
-  private setWaiting = (section: string, isWaiting: boolean): void => {
-    const waiting = new Set(this.state.waiting);
-    isWaiting ? waiting.add(section) : waiting.delete(section);
-    this.setState({ waiting });
-  };
+  public revalidate = () => this.formik && this.formik.validateForm();
 
-  public render(): React.ReactElement<WizardModal<T>> {
-    const { heading, hideSections, initialValues, loading, submitButtonLabel, taskMonitor } = this.props;
-    const { currentPage, dirtyPages, pageErrors, formInvalid, pages, waiting } = this.state;
+  public render() {
+    const {
+      formClassName,
+      heading,
+      initialValues,
+      loading,
+      submitButtonLabel,
+      taskMonitor,
+      closeModal,
+      dismissModal,
+    } = this.props;
+    const { currentPage, initialized, pages } = this.state;
     const { TaskMonitorWrapper } = NgReact;
 
-    const pagesToShow = pages.filter(page => (!hideSections || !hideSections.has(page)) && this.pages[page]);
+    const spinner = (
+      <div className="row">
+        <Spinner size="large" />
+      </div>
+    );
 
-    const submitting = taskMonitor && taskMonitor.submitting;
+    const pageLabels: React.ReactNode[] = pages
+      .sort((a, b) => a.state.order - b.state.order)
+      .map((page: WizardPage<T>) => (
+        <WizardStepLabel
+          key={page.props.label}
+          current={page === currentPage}
+          onClick={this.setCurrentPage}
+          page={page}
+        />
+      ));
+
+    const renderPageContents = () => {
+      const formik = this.formik;
+      const nextIdx = WizardModal.incrementer();
+      return formik ? this.props.render({ formik, nextIdx, wizard: this }) : null;
+    };
+
+    const isSubmitting = taskMonitor && taskMonitor.submitting;
+    const anyLoading = pages.some(page => page.state.status === 'loading');
 
     return (
       <>
         {taskMonitor && <TaskMonitorWrapper monitor={taskMonitor} />}
-        <Formik
+
+        <Formik<T>
+          ref={this.formikRef}
           initialValues={initialValues}
-          onSubmit={this.props.closeModal}
+          isInitialValid={() => !(Object.keys(this.validate(initialValues)).length > 0)}
+          onSubmit={closeModal}
           validate={this.validate}
-          render={(props: FormikProps<T>) => (
-            <Form className="form-horizontal">
-              <ModalClose dismiss={this.props.dismissModal} />
+          render={formik => (
+            <Form className={`form-horizontal ${formClassName}`}>
+              <ModalClose dismiss={dismissModal} />
+
               <Modal.Header>{heading && <h3>{heading}</h3>}</Modal.Header>
+
               <Modal.Body>
-                {loading && (
-                  <div className="row">
-                    <Spinner size="large" />
-                  </div>
-                )}
-                {!loading && (
+                {loading || !initialized ? (
+                  spinner
+                ) : (
                   <div className="row">
                     <div className="col-md-3 hidden-sm hidden-xs">
-                      <ul className="steps-indicator wizard-navigation">
-                        {pagesToShow.map(pageName => (
-                          <WizardStepLabel
-                            key={this.pages[pageName].label}
-                            current={this.pages[pageName] === currentPage}
-                            dirty={dirtyPages.has(this.pages[pageName].label)}
-                            errors={pageErrors[this.pages[pageName].label]}
-                            pageState={this.pages[pageName]}
-                            onClick={this.setCurrentPage}
-                            waiting={waiting.has(pageName)}
-                          />
-                        ))}
-                      </ul>
+                      <ul className="steps-indicator wizard-navigation">{pageLabels}</ul>
                     </div>
+
                     <div className="col-md-9 col-sm-12">
-                      <div className="steps" ref={ele => (this.stepsElement = ele)} onScroll={this.handleStepsScroll}>
-                        {this.getFilteredChildren().map((child: React.ReactElement<any>) => {
-                          return React.cloneElement(child, {
-                            ...props,
-                            dirtyCallback: this.dirtyCallback,
-                            onMount: this.onMount,
-                            revalidate: () => this.revalidate(props.values, props.setErrors),
-                            setWaiting: this.setWaiting,
-                          });
-                        })}
+                      <div className="steps" ref={this.stepsElement} onScroll={this.handleStepsScroll}>
+                        {renderPageContents()}
                       </div>
                     </div>
                   </div>
                 )}
               </Modal.Body>
+
               <Modal.Footer>
-                <button
-                  className="btn btn-default"
-                  disabled={submitting}
-                  onClick={this.props.dismissModal}
-                  type="button"
-                >
+                <button className="btn btn-default" disabled={isSubmitting} onClick={dismissModal} type="button">
                   Cancel
                 </button>
                 <SubmitButton
-                  isDisabled={formInvalid || submitting || waiting.size > 0}
-                  submitting={submitting}
+                  isDisabled={!formik.isValid || isSubmitting || anyLoading || loading}
+                  submitting={isSubmitting}
                   isFormSubmit={true}
                   label={submitButtonLabel}
                 />
@@ -240,47 +211,3 @@ export class WizardModal<T extends FormikValues> extends React.Component<IWizard
     );
   }
 }
-
-const WizardStepLabel = (props: {
-  current: boolean;
-  dirty: boolean;
-  errors: { [key: string]: string };
-  pageState: IWizardPageData;
-  onClick: (pageState: IWizardPageData) => void;
-  waiting: boolean;
-}): JSX.Element => {
-  const { current, dirty, errors, onClick, pageState, waiting } = props;
-  const className = classNames({
-    default: !pageState.props.done,
-    dirty: dirty || !!errors,
-    current,
-    done: pageState.props.done,
-    waiting,
-  });
-  const handleClick = () => {
-    onClick(pageState);
-  };
-
-  const label = (
-    <li className={className}>
-      <a className="clickable" onClick={handleClick}>
-        {pageState.label}
-      </a>
-    </li>
-  );
-
-  if (errors) {
-    const Errors = (
-      <span>
-        {Object.keys(errors).map(key => (
-          <span key={key}>
-            {errors[key]}
-            <br />
-          </span>
-        ))}
-      </span>
-    );
-    return <Tooltip template={Errors}>{label}</Tooltip>;
-  }
-  return label;
-};

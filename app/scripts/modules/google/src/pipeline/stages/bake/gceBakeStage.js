@@ -15,13 +15,13 @@ import {
 } from '@spinnaker/core';
 
 module.exports = angular
-  .module('spinnaker.gce.pipeline.stage..bakeStage', [require('./bakeExecutionDetails.controller.js').name])
+  .module('spinnaker.gce.pipeline.stage..bakeStage', [require('./bakeExecutionDetails.controller').name])
   .config(function() {
     Registry.pipeline.registerStage({
       provides: 'bake',
       cloudProvider: 'gce',
       label: 'Bake',
-      description: 'Bakes an image in the specified region',
+      description: 'Bakes an image',
       templateUrl: require('./bakeStage.html'),
       executionDetailsUrl: require('./bakeExecutionDetails.html'),
       executionLabelComponent: BakeExecutionLabel,
@@ -44,34 +44,36 @@ module.exports = angular
       artifactRemover: ArtifactReferenceService.removeArtifactFromFields(['packageArtifactIds']),
     });
   })
-  .controller('gceBakeStageCtrl', function($scope, $q, $uibModal) {
-    $scope.stage.extendedAttributes = $scope.stage.extendedAttributes || {};
-    $scope.stage.region = 'global';
+  .controller('gceBakeStageCtrl', [
+    '$scope',
+    '$q',
+    '$uibModal',
+    function($scope, $q, $uibModal) {
+      $scope.stage.extendedAttributes = $scope.stage.extendedAttributes || {};
+      $scope.stage.region = 'global';
 
-    if (!$scope.stage.cloudProvider) {
-      $scope.stage.cloudProvider = 'gce';
-    }
+      if (!$scope.stage.cloudProvider) {
+        $scope.stage.cloudProvider = 'gce';
+      }
 
-    if (!$scope.stage.user) {
-      $scope.stage.user = AuthenticationService.getAuthenticatedUser().name;
-    }
+      if (!$scope.stage.user) {
+        $scope.stage.user = AuthenticationService.getAuthenticatedUser().name;
+      }
 
-    $scope.viewState = {
-      loading: true,
-    };
+      $scope.viewState = {
+        loading: true,
+      };
 
-    function initialize() {
-      $scope.viewState.providerSelected = true;
-      $q
-        .all({
+      function initialize() {
+        $scope.viewState.providerSelected = true;
+        $q.all({
           baseOsOptions: BakeryReader.getBaseOsOptions('gce'),
           baseLabelOptions: BakeryReader.getBaseLabelOptions(),
           expectedArtifacts: ExpectedArtifactService.getExpectedArtifactsAvailableToStage(
             $scope.stage,
             $scope.pipeline,
           ),
-        })
-        .then(function(results) {
+        }).then(function(results) {
           $scope.baseOsOptions = results.baseOsOptions.baseImages;
           $scope.baseLabelOptions = results.baseLabelOptions;
           $scope.viewState.expectedArtifacts = results.expectedArtifacts;
@@ -86,74 +88,75 @@ module.exports = angular
           $scope.showAdvancedOptions = showAdvanced();
           $scope.viewState.loading = false;
         });
-    }
-
-    function showAdvanced() {
-      let stage = $scope.stage;
-      return !!(
-        stage.templateFileName ||
-        (stage.extendedAttributes && _.size(stage.extendedAttributes) > 0) ||
-        stage.varFileName ||
-        stage.baseAmi ||
-        stage.accountName
-      );
-    }
-
-    function deleteEmptyProperties() {
-      _.forOwn($scope.stage, function(val, key) {
-        if (val === '') {
-          delete $scope.stage[key];
-        }
-      });
-    }
-
-    this.addExtendedAttribute = function() {
-      if (!$scope.stage.extendedAttributes) {
-        $scope.stage.extendedAttributes = {};
       }
-      $uibModal
-        .open({
-          templateUrl: PipelineTemplates.addExtendedAttributes,
-          controller: 'bakeStageAddExtendedAttributeController',
-          controllerAs: 'addExtendedAttribute',
-          resolve: {
-            extendedAttribute: function() {
-              return {
-                key: '',
-                value: '',
-              };
+
+      function showAdvanced() {
+        const stage = $scope.stage;
+        return !!(
+          stage.templateFileName ||
+          (stage.extendedAttributes && _.size(stage.extendedAttributes) > 0) ||
+          stage.varFileName ||
+          stage.baseAmi ||
+          stage.accountName
+        );
+      }
+
+      function deleteEmptyProperties() {
+        _.forOwn($scope.stage, function(val, key) {
+          if (val === '') {
+            delete $scope.stage[key];
+          }
+        });
+      }
+
+      this.addExtendedAttribute = function() {
+        if (!$scope.stage.extendedAttributes) {
+          $scope.stage.extendedAttributes = {};
+        }
+        $uibModal
+          .open({
+            templateUrl: PipelineTemplates.addExtendedAttributes,
+            controller: 'bakeStageAddExtendedAttributeController',
+            controllerAs: 'addExtendedAttribute',
+            resolve: {
+              extendedAttribute: function() {
+                return {
+                  key: '',
+                  value: '',
+                };
+              },
             },
-          },
-        })
-        .result.then(function(extendedAttribute) {
-          $scope.stage.extendedAttributes[extendedAttribute.key] = extendedAttribute.value;
-        })
-        .catch(() => {});
-    };
+          })
+          .result.then(function(extendedAttribute) {
+            $scope.stage.extendedAttributes[extendedAttribute.key] = extendedAttribute.value;
+          })
+          .catch(() => {});
+      };
 
-    this.removeExtendedAttribute = function(key) {
-      delete $scope.stage.extendedAttributes[key];
-    };
+      this.removeExtendedAttribute = function(key) {
+        delete $scope.stage.extendedAttributes[key];
+      };
 
-    this.showTemplateFileName = function() {
-      return $scope.viewState.roscoMode || $scope.stage.templateFileName;
-    };
+      this.showTemplateFileName = function() {
+        return $scope.viewState.roscoMode || $scope.stage.templateFileName;
+      };
 
-    this.showAccountName = function() {
-      return $scope.viewState.roscoMode || $scope.stage.accountName;
-    };
+      this.showAccountName = function() {
+        return $scope.viewState.roscoMode || $scope.stage.accountName;
+      };
 
-    this.showExtendedAttributes = function() {
-      return (
-        $scope.viewState.roscoMode || ($scope.stage.extendedAttributes && _.size($scope.stage.extendedAttributes) > 0)
-      );
-    };
+      this.showExtendedAttributes = function() {
+        return (
+          $scope.viewState.roscoMode || ($scope.stage.extendedAttributes && _.size($scope.stage.extendedAttributes) > 0)
+        );
+      };
 
-    this.showVarFileName = function() {
-      return $scope.viewState.roscoMode || $scope.stage.varFileName;
-    };
+      this.showVarFileName = function() {
+        return $scope.viewState.roscoMode || $scope.stage.varFileName;
+      };
 
-    $scope.$watch('stage', deleteEmptyProperties, true);
+      $scope.$watch('stage', deleteEmptyProperties, true);
 
-    initialize();
-  });
+      initialize();
+    },
+  ]);

@@ -1,6 +1,9 @@
 import * as React from 'react';
 import { get, has } from 'lodash';
-import { IExpectedArtifact, IExecution, IExecutionDetailsSectionProps, ExecutionDetailsSection } from 'core';
+
+import { IExpectedArtifact, IExecution } from 'core/domain';
+import { IExecutionDetailsSectionProps, ExecutionDetailsSection } from 'core/pipeline';
+
 import { ArtifactIconList } from './ArtifactIconList';
 
 import '../artifactTab.less';
@@ -25,7 +28,7 @@ export class ExecutionArtifactTab extends React.Component<IExecutionDetailsSecti
     const stageContext = get(stage, ['context'], {});
 
     const consumedIds = new Set(
-      stageConfig && stageConfig.artifactExtractor ? stageConfig.artifactExtractor(stageContext) : []
+      stageConfig && stageConfig.artifactExtractor ? stageConfig.artifactExtractor(stageContext) : [],
     );
 
     const boundArtifacts = this.extractBoundArtifactsFromExecution(execution);

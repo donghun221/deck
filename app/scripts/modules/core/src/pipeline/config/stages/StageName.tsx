@@ -16,9 +16,10 @@
  */
 
 import * as React from 'react';
-import { IStage } from '@spinnaker/core';
 import { module } from 'angular';
 import { react2angular } from 'react2angular';
+
+import { IStage } from 'core/domain';
 
 export interface IStageNameProps {
   stages: IStage[];
@@ -37,6 +38,6 @@ export const StageName: React.SFC<IStageNameProps> = props => {
   return <span>{nameFromRefId(props.stages, props.refId)}</span>;
 };
 
-export const STAGE_NAME = 'spinnaker.core.artifact.artifactTab.component';
+export const STAGE_NAME = 'spinnaker.core.artifact.stageName.component';
 
 module(STAGE_NAME, []).component('stageName', react2angular(StageName, ['stages', 'refId']));

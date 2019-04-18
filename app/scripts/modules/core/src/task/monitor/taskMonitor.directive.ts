@@ -2,6 +2,7 @@ import { IComponentOptions, module } from 'angular';
 
 import { AUTO_SCROLL_DIRECTIVE } from 'core/presentation/autoScroll/autoScroll.directive';
 import { MODAL_CLOSE_COMPONENT } from 'core/modal/buttons/modalClose.component';
+import { TASK_MONITOR_ERROR } from './TaskMonitorError';
 
 import './taskMonitor.directive.less';
 
@@ -9,9 +10,9 @@ export const TASKS_MONITOR_DIRECTIVE = 'spinnaker.tasks.monitor.directive';
 
 const ngmodule = module(TASKS_MONITOR_DIRECTIVE, [
   AUTO_SCROLL_DIRECTIVE,
-  require('../../modal/modalOverlay.directive.js').name,
+  require('../../modal/modalOverlay.directive').name,
   MODAL_CLOSE_COMPONENT,
-  require('./taskMonitorError.component').name,
+  TASK_MONITOR_ERROR,
   require('./taskMonitorStatus.component').name,
 ]);
 
@@ -25,11 +26,11 @@ ngmodule.directive('taskMonitor', function() {
   };
 });
 
-export class TaskMonitorWrapperComponent implements IComponentOptions {
-  public template = `<task-monitor monitor="$ctrl.monitor"></task-monitor>`;
-  public bindings = {
+export const taskMonitorWrapperComponent: IComponentOptions = {
+  template: `<task-monitor monitor="$ctrl.monitor"></task-monitor>`,
+  bindings: {
     monitor: '<',
-  };
-}
+  },
+};
 
-ngmodule.component('taskMonitorWrapper', new TaskMonitorWrapperComponent());
+ngmodule.component('taskMonitorWrapper', taskMonitorWrapperComponent);

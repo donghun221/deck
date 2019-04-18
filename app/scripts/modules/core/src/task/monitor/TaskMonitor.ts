@@ -1,6 +1,6 @@
-import { noop, IPromise } from 'angular';
+import { noop, IPromise, IDeferred } from 'angular';
 import { IModalServiceInstance } from 'angular-ui-bootstrap';
-import { $timeout } from 'ngimport';
+import { $timeout, $q } from 'ngimport';
 
 import { Application } from 'core/application/application.model';
 import { ITask } from 'core/domain';
@@ -16,6 +16,10 @@ export interface ITaskMonitorConfig {
   submitMethod?: () => IPromise<ITask>;
 }
 
+export interface IModalServiceInstanceEmulation<T = any> extends IModalServiceInstance {
+  deferred: IDeferred<T>;
+}
+
 export class TaskMonitor {
   public submitting: boolean;
   public task: ITask;
@@ -29,6 +33,20 @@ export class TaskMonitor {
   private onTaskComplete: () => any;
   private onTaskRetry: () => void;
 
+  /** Use this factory in React Modal classes to emulate an AngularJS UI-Bootstrap modalInstance */
+  public static modalInstanceEmulation<T = any>(
+    onClose: (result: T) => void,
+    onDismiss?: (result: T) => void,
+  ): IModalServiceInstanceEmulation {
+    const deferred = $q.defer();
+    return {
+      deferred,
+      result: deferred.promise,
+      close: onClose,
+      dismiss: onDismiss || onClose,
+    } as IModalServiceInstanceEmulation;
+  }
+
   constructor(public config: ITaskMonitorConfig) {
     this.title = config.title;
     this.application = config.application;
@@ -38,7 +56,9 @@ export class TaskMonitor {
     this.monitorInterval = config.monitorInterval || 1000;
     this.submitMethod = config.submitMethod;
 
-    this.modalInstance.result.then(() => this.onModalClose(), () => this.onModalClose());
+    if (this.modalInstance) {
+      this.modalInstance.result.then(() => this.onModalClose(), () => this.onModalClose());
+    }
   }
 
   public onModalClose(): void {

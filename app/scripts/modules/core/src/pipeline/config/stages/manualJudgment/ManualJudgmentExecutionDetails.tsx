@@ -1,11 +1,10 @@
 import * as React from 'react';
 
-import { IExecutionDetailsSectionProps } from 'core/pipeline/config/stages/core';
+import { IExecutionDetailsSectionProps, StageFailureMessage } from 'core/pipeline';
 import { IStage } from 'core/domain';
-import { StageFailureMessage } from 'core/pipeline/details';
 import { robotToHuman } from 'core/presentation/robotToHumanFilter/robotToHuman.filter';
 import { timestamp } from 'core/utils/timeFormatters';
-import { ExecutionDetailsSection } from '../core';
+import { ExecutionDetailsSection } from '../common';
 import { ManualJudgmentApproval } from './ManualJudgmentApproval';
 
 export interface IManualJudgmentExecutionDetailsState {
@@ -49,7 +48,7 @@ export class ManualJudgmentExecutionDetails extends React.Component<
           {stage.context.judgmentInput && <dt>Input</dt>}
           {stage.context.judgmentInput && <dd>{robotToHuman(stage.context.judgmentInput)}</dd>}
         </dl>
-        <ManualJudgmentApproval application={application} execution={execution} stage={stage} />
+        <ManualJudgmentApproval key={stage.refId} application={application} execution={execution} stage={stage} />
         {stage.context.judgmentInput && <StageFailureMessage stage={stage} message={stage.failureMessage} />}
       </ExecutionDetailsSection>
     );

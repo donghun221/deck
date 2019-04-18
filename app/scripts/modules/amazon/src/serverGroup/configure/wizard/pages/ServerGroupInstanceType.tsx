@@ -1,15 +1,18 @@
 import * as React from 'react';
-import { FormikProps } from 'formik';
+import { FormikErrors, FormikProps } from 'formik';
 
-import { IWizardPageProps, wizardPage, NgReact } from '@spinnaker/core';
+import { IWizardPageComponent, NgReact } from '@spinnaker/core';
 
 import { IAmazonServerGroupCommand } from '../../serverGroupConfiguration.service';
 
-class ServerGroupInstanceTypeImpl extends React.Component<IWizardPageProps & FormikProps<IAmazonServerGroupCommand>> {
-  public static LABEL = 'Instance Type';
+export interface IServerGroupInstanceTypeProps {
+  formik: FormikProps<IAmazonServerGroupCommand>;
+}
 
-  public validate(values: IAmazonServerGroupCommand): { [key: string]: string } {
-    const errors: { [key: string]: string } = {};
+export class ServerGroupInstanceType extends React.Component<IServerGroupInstanceTypeProps>
+  implements IWizardPageComponent<IAmazonServerGroupCommand> {
+  public validate(values: IAmazonServerGroupCommand) {
+    const errors: FormikErrors<IAmazonServerGroupCommand> = {};
 
     if (!values.instanceType) {
       errors.instanceType = 'Instance Type required.';
@@ -26,29 +29,29 @@ class ServerGroupInstanceTypeImpl extends React.Component<IWizardPageProps & For
   };
 
   private instanceTypeChanged = (type: string) => {
-    this.props.values.instanceTypeChanged(this.props.values);
-    this.props.setFieldValue('instanceType', type);
+    const { values } = this.props.formik;
+    values.instanceTypeChanged(values);
+    this.props.formik.setFieldValue('instanceType', type);
   };
 
   public render() {
-    const { values } = this.props;
+    const { values } = this.props.formik;
     const showTypeSelector = !!(values.viewState.disableImageSelection || values.amiName);
 
     const { InstanceArchetypeSelector, InstanceTypeSelector } = NgReact;
 
     if (showTypeSelector && values) {
       return (
-        <div>
+        <div className="container-fluid form-horizontal">
           <InstanceArchetypeSelector
             command={values}
             onTypeChanged={this.instanceTypeChanged}
             onProfileChanged={this.instanceProfileChanged}
           />
           <div style={{ padding: '0 15px' }}>
-            {values.viewState.instanceProfile &&
-              values.viewState.instanceProfile !== 'custom' && (
-                <InstanceTypeSelector command={values} onTypeChanged={this.instanceTypeChanged} />
-              )}
+            {values.viewState.instanceProfile && values.viewState.instanceProfile !== 'custom' && (
+              <InstanceTypeSelector command={values} onTypeChanged={this.instanceTypeChanged} />
+            )}
           </div>
         </div>
       );
@@ -57,5 +60,3 @@ class ServerGroupInstanceTypeImpl extends React.Component<IWizardPageProps & For
     return <h5 className="text-center">Please select an image.</h5>;
   }
 }
-
-export const ServerGroupInstanceType = wizardPage(ServerGroupInstanceTypeImpl);

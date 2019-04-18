@@ -29,8 +29,8 @@ export class FindArtifactFromExecutionCtrl implements IController {
     },
   };
 
+  public static $inject = ['$scope'];
   constructor(private $scope: IScope) {
-    'ngInject';
     this.stage = this.$scope.stage as IFindArtifactFromExecutionStage;
     if (this.$scope.stage.isNew) {
       this.stage.executionOptions = {
@@ -60,7 +60,7 @@ export class FindArtifactFromExecutionCtrl implements IController {
     this.state.pipelinesLoaded = false;
     if (this.stage.application) {
       PipelineConfigService.getPipelinesForApplication(this.stage.application).then(ps => {
-        this.state.pipelines = ps.filter(p => p.id !== this.$scope.pipeline.id);
+        this.state.pipelines = ps;
         this.state.pipelinesLoaded = true;
       });
     }

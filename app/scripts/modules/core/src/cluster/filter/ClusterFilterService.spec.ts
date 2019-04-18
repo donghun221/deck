@@ -2,7 +2,7 @@ import { mock } from 'angular';
 import * as _ from 'lodash';
 import { CLUSTER_SERVICE } from 'core/cluster/cluster.service';
 import { Application } from 'core/application/application.model';
-import { APPLICATION_MODEL_BUILDER, ApplicationModelBuilder } from 'core/application/applicationModel.builder';
+import { ApplicationModelBuilder } from 'core/application/applicationModel.builder';
 import * as State from 'core/state';
 
 const ClusterState = State.ClusterState;
@@ -14,19 +14,12 @@ describe('Service: clusterFilterService', function() {
   let clusterService: any;
   let applicationJSON: any;
   let groupedJSON: any;
-  let applicationModelBuilder: ApplicationModelBuilder;
   let application: Application;
 
   beforeEach(function() {
-    mock.module(APPLICATION_MODEL_BUILDER, CLUSTER_SERVICE, require('./mockApplicationData.js').name, 'ui.router');
-    mock.inject(function(
-      _applicationJSON_: any,
-      _groupedJSON_: any,
-      _clusterService_: any,
-      _applicationModelBuilder_: ApplicationModelBuilder,
-    ) {
+    mock.module(CLUSTER_SERVICE, require('./mockApplicationData').name, 'ui.router');
+    mock.inject(function(_applicationJSON_: any, _groupedJSON_: any, _clusterService_: any) {
       clusterService = _clusterService_;
-      applicationModelBuilder = _applicationModelBuilder_;
 
       applicationJSON = _applicationJSON_;
       groupedJSON = _groupedJSON_;
@@ -35,7 +28,7 @@ describe('Service: clusterFilterService', function() {
     });
 
     this.buildApplication = (json: any) => {
-      const app = applicationModelBuilder.createApplication('app', { key: 'serverGroups', lazy: true });
+      const app = ApplicationModelBuilder.createApplicationForTests('app', { key: 'serverGroups', lazy: true });
       if (json.serverGroups) {
         app.getDataSource('serverGroups').data = _.cloneDeep(json.serverGroups.data);
       }
@@ -492,6 +485,152 @@ describe('Service: clusterFilterService', function() {
       setTimeout(() => {
         expect(ClusterState.filterModel.asFilterModel.groups).toEqual([groupedJSON[0]]);
         this.verifyTags([{ key: 'maxInstances', label: 'instance count (max)', value: 0 }]);
+        done();
+      }, debounceTimeout);
+    });
+  });
+
+  describe('filter by label (with search string)', function() {
+    it('should filter by label key and value as exact, case-sensitive matches', function(done) {
+      ClusterState.filterModel.asFilterModel.sortFilter.filter = 'labels:source=prod';
+      const expected: any = _.filter(groupedJSON, {
+        subgroups: [
+          {
+            subgroups: [
+              {
+                serverGroups: [
+                  {
+                    labels: {
+                      source: 'prod',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      ClusterState.filterService.updateClusterGroups(application);
+      setTimeout(() => {
+        expect(ClusterState.filterModel.asFilterModel.groups).toEqual(expected);
+        done();
+      }, debounceTimeout);
+    });
+
+    it('should not match on partial value', function(done) {
+      ClusterState.filterModel.asFilterModel.sortFilter.filter = 'labels:source=pro';
+      ClusterState.filterService.updateClusterGroups(application);
+      setTimeout(() => {
+        expect(ClusterState.filterModel.asFilterModel.groups).toEqual([]);
+        done();
+      }, debounceTimeout);
+    });
+
+    it('should not match on case-insensitive value', function(done) {
+      ClusterState.filterModel.asFilterModel.sortFilter.filter = 'labels:source=Prod';
+      ClusterState.filterService.updateClusterGroups(application);
+      setTimeout(() => {
+        expect(ClusterState.filterModel.asFilterModel.groups).toEqual([]);
+        done();
+      }, debounceTimeout);
+    });
+
+    it('should perform an AND match on comma separated list, ignoring spaces', function(done) {
+      ClusterState.filterModel.asFilterModel.sortFilter.filter = 'labels: source=prod, app=spinnaker';
+      const expected: any = _.filter(groupedJSON, {
+        subgroups: [
+          {
+            subgroups: [
+              {
+                serverGroups: [
+                  {
+                    labels: {
+                      app: 'spinnaker',
+                      source: 'prod',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      ClusterState.filterService.updateClusterGroups(application);
+      setTimeout(() => {
+        expect(ClusterState.filterModel.asFilterModel.groups).toEqual(expected);
+        done();
+      }, debounceTimeout);
+    });
+  });
+
+  describe('filter by label (with filters)', function() {
+    it('should filter by label key and value as exact, case sensitive matches', function(done) {
+      ClusterState.filterModel.asFilterModel.sortFilter.labels = { 'source:prod': true };
+      const expected: any = _.filter(groupedJSON, {
+        subgroups: [
+          {
+            subgroups: [
+              {
+                serverGroups: [
+                  {
+                    labels: {
+                      source: 'prod',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      ClusterState.filterService.updateClusterGroups(application);
+      setTimeout(() => {
+        expect(ClusterState.filterModel.asFilterModel.groups).toEqual(expected);
+        done();
+      }, debounceTimeout);
+    });
+
+    it('should not match on partial value', function(done) {
+      ClusterState.filterModel.asFilterModel.sortFilter.labels = { 'source:pr': true };
+      ClusterState.filterService.updateClusterGroups(application);
+      setTimeout(() => {
+        expect(ClusterState.filterModel.asFilterModel.groups).toEqual([]);
+        done();
+      }, debounceTimeout);
+    });
+
+    it('should not match on case-insensitive value', function(done) {
+      ClusterState.filterModel.asFilterModel.sortFilter.labels = { 'source:Prod': true };
+      ClusterState.filterService.updateClusterGroups(application);
+      setTimeout(() => {
+        expect(ClusterState.filterModel.asFilterModel.groups).toEqual([]);
+        done();
+      }, debounceTimeout);
+    });
+
+    it('should perform an AND match on multiple key-value pairs', function(done) {
+      ClusterState.filterModel.asFilterModel.sortFilter.labels = { 'source:prod': true, 'app:spinnaker': true };
+      const expected: any = _.filter(groupedJSON, {
+        subgroups: [
+          {
+            subgroups: [
+              {
+                serverGroups: [
+                  {
+                    labels: {
+                      app: 'spinnaker',
+                      source: 'prod',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      ClusterState.filterService.updateClusterGroups(application);
+      setTimeout(() => {
+        expect(ClusterState.filterModel.asFilterModel.groups).toEqual(expected);
         done();
       }, debounceTimeout);
     });
@@ -1021,86 +1160,6 @@ describe('Service: clusterFilterService', function() {
         expect(
           ClusterState.filterModel.asFilterModel.groups[0].subgroups[0].subgroups[0].serverGroups[0].runningExecutions,
         ).toBe(executions);
-        done();
-      }, debounceTimeout);
-    });
-  });
-
-  describe('server group managers', function() {
-    let managed: any, unmanaged: any;
-    beforeEach(() => {
-      managed = {
-        cluster: 'cluster-a',
-        name: 'cluster-a-v001',
-        account: 'prod',
-        region: 'us-east-1',
-        stringVal: 'original',
-        category: 'serverGroup',
-        instances: [],
-        serverGroupManagers: [
-          {
-            name: 'my-deployment',
-            location: 'default',
-            account: 'my-k8s-account',
-          },
-        ],
-      };
-      unmanaged = {
-        cluster: 'cluster-a',
-        name: 'cluster-a-v002',
-        account: 'prod',
-        region: 'us-east-1',
-        stringVal: 'original',
-        category: 'serverGroup',
-        instances: [],
-      };
-    });
-
-    it('adds server group manager grouping if managed server groups are present', function(done) {
-      application = this.buildApplication({
-        serverGroups: {
-          data: [managed],
-        },
-      });
-
-      application.clusters = clusterService.createServerGroupClusters(application.getDataSource('serverGroups').data);
-      ClusterState.filterService.updateClusterGroups(application);
-
-      setTimeout(() => {
-        expect(ClusterState.filterModel.asFilterModel.groups[0].subgroups[0].subgroups[0].serverGroupManagers).toEqual([
-          {
-            heading: 'my-deployment',
-            key: 'my-deployment',
-            category: 'serverGroupManager',
-            serverGroups: [managed],
-          },
-        ]);
-        done();
-      }, debounceTimeout);
-    });
-
-    it('only adds managed server groups', function(done) {
-      application = this.buildApplication({
-        serverGroups: {
-          data: [managed, unmanaged],
-        },
-      });
-
-      application.clusters = clusterService.createServerGroupClusters(application.getDataSource('serverGroups').data);
-      ClusterState.filterService.updateClusterGroups(application);
-
-      setTimeout(() => {
-        expect(ClusterState.filterModel.asFilterModel.groups[0].subgroups[0].subgroups[0].serverGroupManagers).toEqual([
-          {
-            heading: 'my-deployment',
-            key: 'my-deployment',
-            category: 'serverGroupManager',
-            serverGroups: [managed],
-          },
-        ]);
-        expect(ClusterState.filterModel.asFilterModel.groups[0].subgroups[0].subgroups[0].serverGroups).toEqual([
-          unmanaged,
-        ]);
         done();
       }, debounceTimeout);
     });

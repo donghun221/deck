@@ -4,6 +4,7 @@ import * as DOMPurify from 'dompurify';
 
 import { HelpContentsRegistry } from 'core/help';
 import { HoverablePopover, Placement } from 'core/presentation';
+import { HelpContextConsumer } from './HelpContext';
 
 export interface IHelpFieldProps {
   id?: string;
@@ -14,38 +15,21 @@ export interface IHelpFieldProps {
   label?: string;
 }
 
-export interface IState {
-  contents: React.ReactElement<any>;
-}
-
-export class HelpField extends React.Component<IHelpFieldProps, IState> {
+export class HelpField extends React.PureComponent<IHelpFieldProps> {
   public static defaultProps: IHelpFieldProps = {
     placement: 'top',
   };
 
   private popoverShownStart: number;
 
-  constructor(props: IHelpFieldProps) {
-    super(props);
-
-    this.state = this.getState();
-  }
-
-  private getState(): IState {
-    const { id, fallback, content } = this.props;
+  private renderContents(id: string, fallback: string, content: string): JSX.Element {
     let contentString = content;
     if (id && !contentString) {
       contentString = HelpContentsRegistry.getHelpField(id) || fallback;
     }
 
     const config = { ADD_ATTR: ['target'] }; // allow: target="_blank"
-    return {
-      contents: <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(contentString, config) }} />,
-    };
-  }
-
-  public componentWillReceiveProps(): void {
-    this.setState(this.getState());
+    return <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(contentString, config) }} />;
   }
 
   private onShow = (): void => {
@@ -58,9 +42,16 @@ export class HelpField extends React.Component<IHelpFieldProps, IState> {
     }
   };
 
+  private shouldExpandHelpText(expandFromContext: any, expandFromProps: any) {
+    if (expandFromProps !== undefined) {
+      return expandFromProps;
+    }
+    return expandFromContext;
+  }
+
   public render() {
-    const { placement, label, expand } = this.props;
-    const { contents } = this.state;
+    const { placement, label, expand, id, fallback, content } = this.props;
+    const contents = this.renderContents(id, fallback, content);
 
     const icon = <i className="small glyphicon glyphicon-question-sign" />;
 
@@ -71,15 +62,25 @@ export class HelpField extends React.Component<IHelpFieldProps, IState> {
     );
 
     if (label) {
-      return <div className="text-only">{!expand && contents && popover}</div>;
+      return (
+        <HelpContextConsumer>
+          {context => (
+            <div className="text-only">{!this.shouldExpandHelpText(context, expand) && contents && popover}</div>
+          )}
+        </HelpContextConsumer>
+      );
     } else {
       const expanded = <div className="help-contents small"> {contents} </div>;
 
       return (
-        <div style={{ display: 'inline-block' }}>
-          {!expand && contents && popover}
-          {expand && contents && expanded}
-        </div>
+        <HelpContextConsumer>
+          {context => (
+            <div style={{ display: 'inline-block' }}>
+              {!this.shouldExpandHelpText(context, expand) && contents && popover}
+              {this.shouldExpandHelpText(context, expand) && contents && expanded}
+            </div>
+          )}
+        </HelpContextConsumer>
       );
     }
   }

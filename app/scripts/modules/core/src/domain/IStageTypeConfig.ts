@@ -1,11 +1,9 @@
 import { IStage } from './IStage';
-import { IExecutionDetailsSectionProps } from 'core/pipeline/config/stages/core';
-import { IExecutionContext, IExecutionStageLabelComponentProps, IExecutionStageSummary } from './IExecutionStage';
+import { IExecutionDetailsSectionProps } from 'core/pipeline/config/stages/common';
+import { IExecutionContext, IExecutionStageLabelProps, IExecutionStageSummary } from './IExecutionStage';
 import { IStageOrTriggerTypeConfig } from './IStageOrTriggerTypeConfig';
 
-export type IExecutionDetailsSection = (
-  | React.ComponentClass<IExecutionDetailsSectionProps>
-  | React.SFC<IExecutionDetailsSectionProps>) & { title: string };
+export type IExecutionDetailsSection = React.ComponentType<IExecutionDetailsSectionProps> & { title: string };
 
 export interface IStageTypeConfig extends IStageOrTriggerTypeConfig {
   accountExtractor?: (stage: IStage) => string;
@@ -17,12 +15,13 @@ export interface IStageTypeConfig extends IStageOrTriggerTypeConfig {
   cloudProviders?: string[];
   configAccountExtractor?: any;
   configuration?: any;
+  defaults?: any;
   defaultTimeoutMs?: number;
   disableNotifications?: boolean;
   executionConfigSections?: string[]; // angular only
   executionDetailsSections?: IExecutionDetailsSection[]; // react only
   executionDetailsUrl?: string; // angular only
-  executionLabelComponent?: React.ComponentClass<IExecutionStageLabelComponentProps>;
+  executionLabelComponent?: React.ComponentType<IExecutionStageLabelProps>;
   executionStepLabelUrl?: string;
   executionSummaryUrl?: string;
   extraLabelLines?: (stage: IStage) => number;

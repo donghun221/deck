@@ -1,23 +1,35 @@
 import { IController, IScope, module } from 'angular';
 import { IModalService } from 'angular-ui-bootstrap';
+import { orderBy } from 'lodash';
 
-import { Application, IManifest, IServerGroupManager, IServerGroupManagerStateParams } from '@spinnaker/core';
-import { IKubernetesServerGroupManager } from '../IKubernetesServerGroupManager';
-import { KubernetesManifestService } from '../../manifest/manifest.service';
+import {
+  NameUtils,
+  Application,
+  IManifest,
+  IServerGroupManager,
+  IServerGroupManagerStateParams,
+  ClusterTargetBuilder,
+  IOwnerOption,
+  IEntityTags,
+} from '@spinnaker/core';
+import { IKubernetesServerGroupManager } from 'kubernetes/v2/serverGroupManager/IKubernetesServerGroupManager';
+import { KubernetesManifestService } from 'kubernetes/v2/manifest/manifest.service';
+import { KubernetesManifestCommandBuilder } from 'kubernetes/v2/manifest/manifestCommandBuilder.service';
+import { ManifestWizard } from 'kubernetes/v2/manifest/wizard/ManifestWizard';
 
 class KubernetesServerGroupManagerDetailsController implements IController {
   public serverGroupManager: IKubernetesServerGroupManager;
   public state = { loading: true };
   public manifest: IManifest;
+  public entityTagTargets: IOwnerOption[];
 
+  public static $inject = ['serverGroupManager', '$scope', '$uibModal', 'app'];
   constructor(
     serverGroupManager: IServerGroupManagerStateParams,
     private $scope: IScope,
     private $uibModal: IModalService,
     public app: Application,
   ) {
-    'ngInject';
-
     const unsubscribe = KubernetesManifestService.makeManifestRefresher(
       this.app,
       {
@@ -77,7 +89,7 @@ class KubernetesServerGroupManagerDetailsController implements IController {
 
   public undoRolloutServerGroupManager(): void {
     this.$uibModal.open({
-      templateUrl: require('../../manifest/rollout/undo.html'),
+      templateUrl: require('kubernetes/v2/manifest/rollout/undo.html'),
       controller: 'kubernetesV2ManifestUndoRolloutCtrl',
       controllerAs: 'ctrl',
       resolve: {
@@ -86,13 +98,13 @@ class KubernetesServerGroupManagerDetailsController implements IController {
           namespace: this.serverGroupManager.namespace,
           account: this.serverGroupManager.account,
         },
-        revisions: () =>
-          this.serverGroupManager.serverGroups.map(sg => {
-            return {
-              name: sg.name,
-              revision: sg.moniker.sequence,
-            };
-          }),
+        revisions: () => {
+          const [, ...rest] = orderBy(this.serverGroupManager.serverGroups, ['moniker.sequence'], ['desc']);
+          return rest.map((serverGroup, index) => ({
+            label: `${NameUtils.getSequence(serverGroup.moniker.sequence)}${index > 0 ? '' : ' - previous revision'}`,
+            revision: serverGroup.moniker.sequence,
+          }));
+        },
         application: this.app,
       },
     });
@@ -116,17 +128,13 @@ class KubernetesServerGroupManagerDetailsController implements IController {
   }
 
   public editServerGroupManager(): void {
-    this.$uibModal.open({
-      templateUrl: require('kubernetes/v2/manifest/wizard/manifestWizard.html'),
-      size: 'lg',
-      controller: 'kubernetesV2ManifestEditCtrl',
-      controllerAs: 'ctrl',
-      resolve: {
-        sourceManifest: () => this.serverGroupManager.manifest,
-        sourceMoniker: () => this.serverGroupManager.moniker,
-        application: () => this.app,
-        account: () => this.serverGroupManager.account,
-      },
+    KubernetesManifestCommandBuilder.buildNewManifestCommand(
+      this.app,
+      this.serverGroupManager.manifest,
+      this.serverGroupManager.moniker,
+      this.serverGroupManager.account,
+    ).then(builtCommand => {
+      ManifestWizard.show({ title: 'Edit Manifest', application: this.app, command: builtCommand });
     });
   }
 
@@ -171,6 +179,25 @@ class KubernetesServerGroupManagerDetailsController implements IController {
             manager.account === stateParams.accountId,
         ),
     );
+    this.entityTagTargets = this.configureEntityTagTargets();
+    this.serverGroupManager.entityTags = this.extractEntityTags();
+  }
+
+  private configureEntityTagTargets(): IOwnerOption[] {
+    return ClusterTargetBuilder.buildManagerClusterTargets(this.serverGroupManager);
+  }
+
+  private extractEntityTags(): IEntityTags {
+    for (const toCheck of this.app.serverGroupManagers.data) {
+      if (
+        toCheck.name === this.serverGroupManager.name &&
+        toCheck.account === this.serverGroupManager.account &&
+        toCheck.region === this.serverGroupManager.namespace
+      ) {
+        return toCheck.entityTags;
+      }
+    }
+    return null;
   }
 }
 

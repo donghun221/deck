@@ -2,7 +2,7 @@ import { copy, IController, module } from 'angular';
 import { IModalServiceInstance } from 'angular-ui-bootstrap';
 
 import { Application, ManifestWriter, TaskMonitor } from '@spinnaker/core';
-import { IManifestCoordinates } from '../IManifestCoordinates';
+import { IManifestCoordinates } from 'kubernetes/v2/manifest/IManifestCoordinates';
 
 interface IUndoRolloutCommand {
   manifestName: string;
@@ -13,7 +13,7 @@ interface IUndoRolloutCommand {
 }
 
 interface IRolloutRevision {
-  name: string;
+  label: string;
   revision: number;
 }
 
@@ -24,14 +24,13 @@ class KubernetesManifestUndoRolloutController implements IController {
     verified: false,
   };
 
+  public static $inject = ['coordinates', 'revisions', '$uibModalInstance', 'application'];
   constructor(
     coordinates: IManifestCoordinates,
     public revisions: IRolloutRevision[],
     private $uibModalInstance: IModalServiceInstance,
     private application: Application,
   ) {
-    'ngInject';
-
     this.taskMonitor = new TaskMonitor({
       title: `Undo rollout of ${coordinates.name} in ${coordinates.namespace}`,
       application,

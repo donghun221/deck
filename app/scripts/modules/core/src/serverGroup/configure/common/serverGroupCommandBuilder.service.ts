@@ -2,7 +2,7 @@ import { module } from 'angular';
 
 import { Application } from 'core/application/application.model';
 import { IMoniker } from 'core/naming/IMoniker';
-import { ILoadBalancer, ISecurityGroup, ISubnet, IEntityTags } from 'core/domain';
+import { ILoadBalancer, ISecurityGroup, ISubnet, IPipeline, IStage } from 'core/domain';
 import { ICapacity } from 'core/serverGroup/serverGroupWriter.service';
 import { IDeploymentStrategy } from 'core/deploymentStrategy';
 import { ISecurityGroupsByAccountSourceData } from 'core/securityGroup/securityGroupReader.service';
@@ -43,6 +43,7 @@ export interface IServerGroupCommandViewState {
   disableNoTemplateSelection?: boolean;
   disableStrategySelection?: boolean;
   hideClusterNamePreview?: boolean;
+  imageSourceText?: string;
   overrides: any;
   overriddenStorageDescription?: string;
   readOnlyFields: { [field: string]: boolean };
@@ -53,6 +54,8 @@ export interface IServerGroupCommandViewState {
   useSimpleCapacity: boolean;
   usePreferredZones: boolean;
   mode: string;
+  pipeline?: IPipeline;
+  stage?: IStage;
 }
 
 export interface IServerGroupCommandBackingDataFiltered {
@@ -86,7 +89,7 @@ export interface IServerGroupCommandBackingData {
   securityGroups: ISecurityGroupsByAccountSourceData;
 }
 
-export interface IServerGroupCommand extends IServerGroupCommandResult {
+export interface IServerGroupCommand {
   amiName?: string;
   application: string;
   availabilityZones: string[];
@@ -100,6 +103,7 @@ export interface IServerGroupCommand extends IServerGroupCommandResult {
   freeFormDetails?: string;
   healthCheckType: string;
   iamRole: string;
+  imageArtifactId?: string;
   instanceType: string;
   interestingHealthProviderNames: string[];
   loadBalancers: string[];
@@ -118,7 +122,7 @@ export interface IServerGroupCommand extends IServerGroupCommandResult {
   strategy: string;
   subnetType: string;
   suspendedProcesses: string[];
-  tags: IEntityTags;
+  tags: { [key: string]: string };
   terminationPolicies: string[];
   type?: string;
   useSourceCapacity?: boolean;
@@ -137,20 +141,20 @@ export interface IServerGroupCommand extends IServerGroupCommandResult {
 }
 
 export class ServerGroupCommandBuilderService {
-  private getDelegate(provider: string): any {
-    return this.providerServiceDelegate.getDelegate(provider, 'serverGroup.commandBuilder');
+  private getDelegate(provider: string, skin?: string): any {
+    return this.providerServiceDelegate.getDelegate(provider, 'serverGroup.commandBuilder', skin);
   }
 
-  constructor(private providerServiceDelegate: ProviderServiceDelegate) {
-    'ngInject';
-  }
+  public static $inject = ['providerServiceDelegate'];
+  constructor(private providerServiceDelegate: ProviderServiceDelegate) {}
 
   public buildNewServerGroupCommand(
     application: Application,
     provider: string,
     options: IServerGroupCommandBuilderOptions,
+    skin?: string,
   ): any {
-    return this.getDelegate(provider).buildNewServerGroupCommand(application, options);
+    return this.getDelegate(provider, skin).buildNewServerGroupCommand(application, options);
   }
 
   public buildServerGroupCommandFromExisting(application: Application, serverGroup: any, mode: string): any {

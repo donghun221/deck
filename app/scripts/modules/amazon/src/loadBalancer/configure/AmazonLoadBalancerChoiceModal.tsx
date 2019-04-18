@@ -41,13 +41,16 @@ export class AmazonLoadBalancerChoiceModal extends React.Component<
   private choose = (): void => {
     const { children, ...loadBalancerProps } = this.props;
     this.close();
-    this.state.selectedChoice.component.show(loadBalancerProps).then(loadBalancer => {
-      this.props.closeModal(loadBalancer);
-    });
+    this.state.selectedChoice.component
+      .show(loadBalancerProps)
+      .then(loadBalancer => {
+        this.props.closeModal(loadBalancer);
+      })
+      .catch(() => {});
   };
 
-  public close = (): void => {
-    this.props.dismissModal.apply(null, arguments);
+  public close = (reason?: any): void => {
+    this.props.dismissModal(reason);
   };
 
   public render() {

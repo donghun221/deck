@@ -1,11 +1,11 @@
-import { Spinner } from 'core';
 import * as React from 'react';
 import { Subject, Observable } from 'rxjs';
+import { get } from 'lodash';
 
 import { CloudProviderRegistry } from 'core/cloudProvider';
 import { ReactInjector, AngularJSAdapter } from 'core/reactShims';
 import { AccountService, IAccountDetails } from 'core/account/AccountService';
-import { get } from 'lodash';
+import { Spinner } from 'core/widgets';
 
 export interface IOverridableProps {
   accountId?: string;
@@ -179,7 +179,9 @@ export function overridableComponent<P extends IOverridableProps, T extends Reac
     }
   }
 
-  const forwardRef = React.forwardRef((props, ref) => <OverridableComponent {...props} forwardedRef={ref} />) as T;
+  const forwardRef = (React.forwardRef<T, P>((props, ref) => (
+    <OverridableComponent {...props} forwardedRef={ref} />
+  )) as unknown) as T;
 
   // Copy static properties
   Object.getOwnPropertyNames(OriginalComponent)

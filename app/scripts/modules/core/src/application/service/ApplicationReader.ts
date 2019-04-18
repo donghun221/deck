@@ -1,8 +1,7 @@
 import { IPromise } from 'angular';
-import { $q, $log, $filter } from 'ngimport';
 
-import { API } from 'core/api/ApiService';
-import { SchedulerFactory } from 'core/scheduler/SchedulerFactory';
+import { API } from 'core/api';
+import { SchedulerFactory } from 'core/scheduler';
 import { Application } from '../application.model';
 import { ApplicationDataSource, IDataSourceConfig } from '../service/applicationDataSource';
 import { ApplicationDataSourceRegistry } from './ApplicationDataSourceRegistry';
@@ -26,19 +25,19 @@ export interface IApplicationSummary {
 }
 
 export class ApplicationReader {
-  private static applicationMap: Map<string, IApplicationSummary> = new Map<string, IApplicationSummary>();
-
-  public static listApplications(populateMap = false): IPromise<IApplicationSummary[]> {
+  public static listApplications(): IPromise<IApplicationSummary[]> {
     return API.all('applications')
       .useCache()
-      .getList()
-      .then((applications: IApplicationSummary[]) => {
-        if (populateMap) {
-          const tmpMap: Map<string, IApplicationSummary> = new Map<string, IApplicationSummary>();
-          applications.forEach((application: IApplicationSummary) => tmpMap.set(application.name, application));
-          this.applicationMap = tmpMap;
-        }
-        return applications;
+      .getList();
+  }
+
+  public static getApplicationAttributes(name: string): IPromise<any> {
+    return API.one('applications', name)
+      .withParams({ expand: false })
+      .get()
+      .then((fromServer: Application) => {
+        this.splitAttributes(fromServer.attributes, ['accounts', 'cloudProviders']);
+        return fromServer.attributes;
       });
   }
 
@@ -47,17 +46,14 @@ export class ApplicationReader {
       .withParams({ expand: expand })
       .get()
       .then((fromServer: Application) => {
-        const application: Application = new Application(fromServer.name, SchedulerFactory.createScheduler(), $q, $log);
+        const configs: IDataSourceConfig[] = ApplicationDataSourceRegistry.getDataSources();
+        const application: Application = new Application(fromServer.name, SchedulerFactory.createScheduler(), configs);
         application.attributes = fromServer.attributes;
         this.splitAttributes(application.attributes, ['accounts', 'cloudProviders']);
-        this.addDataSources(application);
+        this.setDisabledDataSources(application);
         application.refresh();
         return application;
       });
-  }
-
-  public static getApplicationMap(): Map<string, IApplicationSummary> {
-    return this.applicationMap;
   }
 
   private static splitAttributes(attributes: any, fields: string[]) {
@@ -72,19 +68,10 @@ export class ApplicationReader {
     });
   }
 
-  private static addDataSources(application: Application): void {
-    const dataSources: IDataSourceConfig[] = ApplicationDataSourceRegistry.getDataSources();
-    dataSources.forEach((ds: IDataSourceConfig) => {
-      const dataSource: ApplicationDataSource = new ApplicationDataSource(ds, application, $q, $log, $filter);
-      application.dataSources.push(dataSource);
-      application[ds.key] = dataSource;
-    });
-    this.setDisabledDataSources(application);
-  }
-
   public static setDisabledDataSources(application: Application) {
-    const allDataSources: ApplicationDataSource[] = application.dataSources,
-      appDataSources: IApplicationDataSourceAttribute = application.attributes.dataSources;
+    const allDataSources: ApplicationDataSource[] = application.dataSources;
+    const appDataSources: IApplicationDataSourceAttribute = application.attributes.dataSources;
+
     if (!appDataSources) {
       allDataSources.filter(ds => ds.optIn).forEach(ds => this.setDataSourceDisabled(ds, application, true));
       if (InferredApplicationWarningService.isInferredApplication(application)) {
@@ -103,12 +90,14 @@ export class ApplicationReader {
         }
       });
     }
-    allDataSources.filter(ds => ds.requiresDataSource).forEach(ds => {
-      const parent = allDataSources.find(p => p.key === ds.requiresDataSource);
-      if (parent && parent.disabled) {
-        this.setDataSourceDisabled(ds, application, true);
-      }
-    });
+    allDataSources
+      .filter(ds => ds.requiresDataSource)
+      .forEach(ds => {
+        const parent = allDataSources.find(p => p.key === ds.requiresDataSource);
+        if (parent) {
+          this.setDataSourceDisabled(ds, application, parent.disabled);
+        }
+      });
   }
 
   private static setDataSourceDisabled(dataSource: ApplicationDataSource, application: Application, disabled: boolean) {

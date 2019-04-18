@@ -2,17 +2,18 @@ import { IHttpBackendService, mock } from 'angular';
 import { find } from 'lodash';
 
 import * as State from 'core/state';
-import { APPLICATION_MODEL_BUILDER, ApplicationModelBuilder } from 'core/application/applicationModel.builder';
+import { ApplicationModelBuilder } from 'core/application/applicationModel.builder';
 import { IInstanceCounts, IServerGroup } from 'core/domain';
 import { Application } from 'core/application/application.model';
 
 import { CLUSTER_SERVICE, ClusterService } from './cluster.service';
 import { API } from '../api/ApiService';
+import { SETTINGS } from 'core/config/settings';
 
 const ClusterState = State.ClusterState;
 
 describe('Service: Cluster', function() {
-  beforeEach(mock.module(CLUSTER_SERVICE, APPLICATION_MODEL_BUILDER));
+  beforeEach(mock.module(CLUSTER_SERVICE));
 
   let clusterService: ClusterService;
   let $http: IHttpBackendService;
@@ -32,35 +33,29 @@ describe('Service: Cluster', function() {
   });
 
   beforeEach(
-    mock.inject(
-      (
-        $httpBackend: IHttpBackendService,
-        _clusterService_: ClusterService,
-        applicationModelBuilder: ApplicationModelBuilder,
-      ) => {
-        $http = $httpBackend;
-        clusterService = _clusterService_;
+    mock.inject(($httpBackend: IHttpBackendService, _clusterService_: ClusterService) => {
+      $http = $httpBackend;
+      clusterService = _clusterService_;
 
-        application = applicationModelBuilder.createApplication(
-          'app',
-          { key: 'serverGroups' },
-          { key: 'runningExecutions' },
-          { key: 'runningTasks' },
-        );
-        application.getDataSource('serverGroups').data = [
-          { name: 'the-target', account: 'not-the-target', region: 'us-east-1' },
-          { name: 'the-target', account: 'test', region: 'not-the-target' },
-          { name: 'the-target', account: 'test', region: 'us-east-1' },
-          { name: 'not-the-target', account: 'test', region: 'us-east-1' },
-          { name: 'the-source', account: 'test', region: 'us-east-1' },
-        ];
-      },
-    ),
+      application = ApplicationModelBuilder.createApplicationForTests(
+        'app',
+        { key: 'serverGroups' },
+        { key: 'runningExecutions' },
+        { key: 'runningTasks' },
+      );
+      application.getDataSource('serverGroups').data = [
+        { name: 'the-target', account: 'not-the-target', region: 'us-east-1' },
+        { name: 'the-target', account: 'test', region: 'not-the-target' },
+        { name: 'the-target', account: 'test', region: 'us-east-1' },
+        { name: 'not-the-target', account: 'test', region: 'us-east-1' },
+        { name: 'the-source', account: 'test', region: 'us-east-1' },
+      ];
+    }),
   );
 
   describe('lazy cluster fetching', () => {
     it('switches to lazy cluster fetching if there are more than the on demand threshold for clusters', () => {
-      const clusters = Array(ClusterService.ON_DEMAND_THRESHOLD + 1);
+      const clusters = Array(SETTINGS.onDemandClusterThreshold + 1);
       $http.expectGET(API.baseUrl + '/applications/app/clusters').respond(200, { test: clusters });
       $http.expectGET(API.baseUrl + '/applications/app/serverGroups?clusters=').respond(200, []);
       let serverGroups: IServerGroup[] = null;
@@ -71,7 +66,7 @@ describe('Service: Cluster', function() {
     });
 
     it('does boring regular fetching when there are less than the on demand threshold for clusters', () => {
-      const clusters = Array(ClusterService.ON_DEMAND_THRESHOLD);
+      const clusters = Array(SETTINGS.onDemandClusterThreshold);
       $http.expectGET(API.baseUrl + '/applications/app/clusters').respond(200, { test: clusters });
       $http.expectGET(API.baseUrl + '/applications/app/serverGroups').respond(200, []);
       let serverGroups: IServerGroup[] = null;
@@ -93,6 +88,7 @@ describe('Service: Cluster', function() {
       expect(application.serverGroups.fetchOnDemand).toBe(false);
       expect(ClusterState.filterModel.asFilterModel.sortFilter.filter).toEqual('clusters:myapp');
       expect(ClusterState.filterModel.asFilterModel.sortFilter.account.test).toBe(true);
+      expect(serverGroups).toEqual([]);
     });
   });
 

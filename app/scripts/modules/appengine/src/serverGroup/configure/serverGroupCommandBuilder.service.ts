@@ -9,6 +9,7 @@ import {
   IGitTrigger,
   IPipeline,
   IStage,
+  IArtifactAccountPair,
 } from '@spinnaker/core';
 
 import {
@@ -28,6 +29,7 @@ export interface IAppengineServerGroupCommand {
   freeFormDetails?: string;
   configFilepaths?: string[];
   configFiles?: string[];
+  configArtifacts?: IArtifactAccountPair[];
   applicationDirectoryRoot: string;
   branch?: string;
   repositoryUrl?: string;
@@ -36,6 +38,7 @@ export interface IAppengineServerGroupCommand {
   selectedProvider: string;
   promote?: boolean;
   stopPreviousVersion?: boolean;
+  suppressVersionString?: boolean;
   type?: string;
   backingData: any;
   viewState: IViewState;
@@ -64,6 +67,8 @@ export interface IViewState {
   mode: string;
   submitButtonLabel: string;
   disableStrategySelection: boolean;
+  stage?: IStage;
+  pipeline?: IPipeline;
 }
 
 export class AppengineServerGroupCommandBuilder {
@@ -89,15 +94,17 @@ export class AppengineServerGroupCommandBuilder {
     return pipeline.expectedArtifacts || [];
   }
 
-  constructor(private $q: IQService) {
-    'ngInject';
-  }
+  public static $inject = ['$q'];
+  constructor(private $q: IQService) {}
 
   public buildNewServerGroupCommand(
     app: Application,
-    selectedProvider = 'appengine',
+    selectedProvider: string,
     mode = 'create',
   ): IPromise<IAppengineServerGroupCommand> {
+    if (selectedProvider == null) {
+      selectedProvider = 'appengine';
+    }
     const dataToFetch = {
       accounts: AccountService.getAllAccountDetailsForProvider('appengine'),
       storageAccounts: StorageAccountReader.getStorageAccounts(),
@@ -142,6 +149,10 @@ export class AppengineServerGroupCommandBuilder {
     _stage: IStage,
     pipeline: IPipeline,
   ): IPromise<{
+    viewState: {
+      stage: IStage;
+      pipeline: IPipeline;
+    };
     backingData: {
       triggerOptions: Array<IAppengineGitTrigger | IAppengineJenkinsTrigger>;
       expectedArtifacts: IExpectedArtifact[];
@@ -150,6 +161,10 @@ export class AppengineServerGroupCommandBuilder {
     // We can't copy server group configuration for App Engine, and can't build the full command here because we don't have
     // access to the application.
     return this.$q.when({
+      viewState: {
+        pipeline,
+        stage: _stage,
+      },
       backingData: {
         triggerOptions: AppengineServerGroupCommandBuilder.getTriggerOptions(pipeline),
         expectedArtifacts: AppengineServerGroupCommandBuilder.getExpectedArtifacts(pipeline),
@@ -172,6 +187,11 @@ export class AppengineServerGroupCommandBuilder {
             ...command.backingData,
             triggerOptions: AppengineServerGroupCommandBuilder.getTriggerOptions(pipeline),
             expectedArtifacts: AppengineServerGroupCommandBuilder.getExpectedArtifacts(pipeline),
+          },
+          viewState: {
+            ...command.viewState,
+            stage: _stage,
+            pipeline,
           },
         } as IAppengineServerGroupCommand;
         return command;

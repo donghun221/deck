@@ -1,8 +1,8 @@
-import { duration } from 'moment';
+import { distanceInWords } from 'date-fns';
 import { $log } from 'ngimport';
 
 import { IOrchestratedItem, IOrchestratedItemVariable, ITask, ITaskStep } from 'core/domain';
-import { ReactInjector } from 'core';
+import { ReactInjector } from 'core/reactShims';
 
 export class OrchestratedItemTransformer {
   public static addRunningTime(item: any): void {
@@ -87,7 +87,11 @@ export class OrchestratedItemTransformer {
         },
       },
       runningTime: {
-        get: () => duration(this.calculateRunningTime(item)()).humanize(),
+        get: () => {
+          const now = Date.now();
+          const start = new Date(now - this.calculateRunningTime(item)());
+          return distanceInWords(start, now, { includeSeconds: true });
+        },
         configurable: true,
       },
       runningTimeInMs: {

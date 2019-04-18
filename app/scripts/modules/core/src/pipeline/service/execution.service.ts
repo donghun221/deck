@@ -14,6 +14,10 @@ import { DebugWindow } from 'core/utils/consoleDebug';
 import { IPipeline } from 'core/domain/IPipeline';
 import { ISortFilter } from 'core/filterModel';
 import { ExecutionState } from 'core/state';
+import { Error } from 'tslint/lib/error';
+import { IRetryablePromise, retryablePromise } from 'core/utils/retryablePromise';
+import { ReactInjector } from 'core/reactShims';
+import { PipelineConfigService } from 'core/pipeline/config/services/PipelineConfigService';
 
 export class ExecutionService {
   public get activeStatuses(): string[] {
@@ -38,9 +42,7 @@ export class ExecutionService {
     private $q: IQService,
     private $state: StateService,
     private $timeout: ITimeoutService,
-  ) {
-    'ngInject';
-  }
+  ) {}
 
   public getRunningExecutions(applicationName: string): IPromise<IExecution[]> {
     return this.getFilteredExecutions(applicationName, this.activeStatuses, this.runningLimit, null, true);
@@ -102,9 +104,34 @@ export class ExecutionService {
     return API.one('pipelines', executionId)
       .get()
       .then((execution: IExecution) => {
+        const { application, name } = execution;
         execution.hydrated = true;
         this.cleanExecutionForDiffing(execution);
+        if (application && name) {
+          return API.one('applications', application, 'pipelineConfigs', name)
+            .get()
+            .then((pipelineConfig: IPipeline) => {
+              execution.pipelineConfig = pipelineConfig;
+              return execution;
+            })
+            .catch(() => execution);
+        }
         return execution;
+      });
+  }
+
+  public getExecutionByEventId(application: string, pipelineName: string, eventId: string): IPromise<IExecution> {
+    return API.all('applications', application, 'executions', 'search')
+      .get({ pipelineName, eventId })
+      .then((data: IExecution[]) => {
+        if (data.length > 0) {
+          const execution = data[0];
+          execution.hydrated = true;
+          this.cleanExecutionForDiffing(execution);
+          return execution;
+        } else {
+          throw new Error('No execution found for event id: ' + eventId);
+        }
       });
   }
 
@@ -210,16 +237,21 @@ export class ExecutionService {
     }
   }
 
-  public waitUntilNewTriggeredPipelineAppears(application: Application, triggeredPipelineId: string): IPromise<any> {
-    return this.getExecution(triggeredPipelineId)
-      .then(() => {
-        return application.executions.refresh();
-      })
-      .catch(() => {
-        return this.$timeout(() => {
-          return this.waitUntilNewTriggeredPipelineAppears(application, triggeredPipelineId);
-        }, 1000);
-      });
+  public startAndMonitorPipeline(app: Application, pipeline: string, trigger: any): IPromise<IRetryablePromise<void>> {
+    const { executionService } = ReactInjector;
+    return PipelineConfigService.triggerPipeline(app.name, pipeline, trigger).then(triggerResult =>
+      executionService.waitUntilTriggeredPipelineAppears(app, pipeline, triggerResult),
+    );
+  }
+
+  public waitUntilTriggeredPipelineAppears(
+    application: Application,
+    pipelineName: string,
+    eventId: string,
+  ): IRetryablePromise<any> {
+    const closure = () =>
+      this.getExecutionByEventId(application.name, pipelineName, eventId).then(() => application.executions.refresh());
+    return retryablePromise(closure, 1000, 10);
   }
 
   private waitUntilPipelineIsCancelled(application: Application, executionId: string): IPromise<any> {
@@ -488,6 +520,9 @@ export class ExecutionService {
     if (unhydrated.hydrator) {
       return unhydrated.hydrator;
     }
+    if (unhydrated.hydrated) {
+      return Promise.resolve(unhydrated);
+    }
     const executionHydrator = this.getExecution(unhydrated.id).then(hydrated => {
       this.transformExecution(application, hydrated);
       hydrated.stages.forEach(s => {
@@ -569,10 +604,13 @@ export class ExecutionService {
 }
 
 export const EXECUTION_SERVICE = 'spinnaker.core.pipeline.executions.service';
-module(EXECUTION_SERVICE, []).factory(
-  'executionService',
+module(EXECUTION_SERVICE, [require('@uirouter/angularjs').default]).factory('executionService', [
+  '$http',
+  '$q',
+  '$state',
+  '$timeout',
   ($http: IHttpService, $q: IQService, $state: StateService, $timeout: ITimeoutService) =>
     new ExecutionService($http, $q, $state, $timeout),
-);
+]);
 
 DebugWindow.addInjectable('executionService');

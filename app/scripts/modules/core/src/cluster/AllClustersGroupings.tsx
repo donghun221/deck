@@ -68,7 +68,12 @@ export class AllClustersGroupings extends React.Component<IAllClustersGroupingsP
     };
   }
 
+  private handleWindowResize = () => {
+    this.cellCache.clearAll();
+  };
+
   public componentDidMount() {
+    window.addEventListener('resize', this.handleWindowResize);
     const onGroupsChanged = (groups: IClusterGroup[]) => {
       this.setState(
         { groups: groups.reduce((a, b) => a.concat(b.subgroups), []) },
@@ -90,6 +95,7 @@ export class AllClustersGroupings extends React.Component<IAllClustersGroupingsP
   }
 
   public componentWillUnmount() {
+    window.removeEventListener('resize', this.handleWindowResize);
     this.groupsSubscription.unsubscribe();
     this.unwatchSortFilter();
   }
@@ -136,7 +142,7 @@ export class AllClustersGroupings extends React.Component<IAllClustersGroupingsP
 
   private noRowsRender = (): JSX.Element => {
     const dataSource = this.props.app.getDataSource('serverGroups');
-    if (!this.props.initialized) {
+    if (!this.props.initialized || dataSource.loadFailure) {
       return null;
     }
 

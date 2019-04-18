@@ -1,9 +1,13 @@
 import * as React from 'react';
 
-import { ExecutionDetailsSection, IExecutionDetailsSectionProps } from 'core/pipeline/config/stages/core';
+import {
+  ExecutionDetailsSection,
+  IExecutionDetailsSectionProps,
+  StageExecutionLogs,
+  StageFailureMessage,
+} from 'core/pipeline';
 import { AccountTag } from 'core/account';
-import { StageExecutionLogs, StageFailureMessage } from 'core/pipeline/details';
-import { ServerGroupStageContext } from '../core/ServerGroupStageContext';
+import { ServerGroupStageContext } from '../common/ServerGroupStageContext';
 
 export function DisableClusterExecutionDetails(props: IExecutionDetailsSectionProps) {
   const { stage } = props;
@@ -33,6 +37,8 @@ export function DisableClusterExecutionDetails(props: IExecutionDetailsSectionPr
   );
 }
 
+// TODO: refactor this to not use namespace
+// eslint-disable-next-line
 export namespace DisableClusterExecutionDetails {
   export const title = 'disableClusterConfig';
 }

@@ -5,7 +5,7 @@ const angular = require('angular');
 import { Registry } from 'core/registry';
 
 module.exports = angular
-  .module('spinnaker.core.pipeline.stage.waitForParentTasks', [require('./waitForParentTasks.transformer.js').name])
+  .module('spinnaker.core.pipeline.stage.waitForParentTasks', [require('./waitForParentTasks.transformer').name])
   .config(function() {
     Registry.pipeline.registerStage({
       key: 'waitForRequisiteCompletion',
@@ -13,6 +13,9 @@ module.exports = angular
       executionDetailsUrl: require('./waitForParentTasksExecutionDetails.html'),
     });
   })
-  .run(function(waitForParentTasksTransformer) {
-    Registry.pipeline.registerTransformer(waitForParentTasksTransformer);
-  });
+  .run([
+    'waitForParentTasksTransformer',
+    function(waitForParentTasksTransformer) {
+      Registry.pipeline.registerTransformer(waitForParentTasksTransformer);
+    },
+  ]);

@@ -2,7 +2,11 @@ import { extend, IController, IControllerService, IScope, module } from 'angular
 import { StateService } from '@uirouter/angularjs';
 import { set } from 'lodash';
 
-import { SETTINGS, ArtifactTypePatterns } from '@spinnaker/core';
+import {
+  ArtifactTypePatterns,
+  ExpectedArtifactSelectorViewController,
+  NgAppEngineDeployArtifactDelegate,
+} from '@spinnaker/core';
 
 import { GitCredentialType, IAppengineAccount } from 'appengine/domain/index';
 import { AppengineSourceType, IAppengineServerGroupCommand } from '../serverGroupCommandBuilder.service';
@@ -12,17 +16,13 @@ interface IAppengineBasicSettingsScope extends IScope {
 }
 
 class AppengineServerGroupBasicSettingsCtrl implements IController {
-  public containerImageUrlEnabled = SETTINGS.providers.appengine.defaults.containerImageUrlDeployments;
-  public containerImageArtifactTypes: RegExp[];
-
+  public static $inject = ['$scope', '$state', '$controller', '$uibModalStack'];
   constructor(
     public $scope: IAppengineBasicSettingsScope,
     $state: StateService,
     $controller: IControllerService,
     $uibModalStack: any,
   ) {
-    'ngInject';
-
     extend(
       this,
       $controller('BasicSettingsMixin', {
@@ -36,7 +36,15 @@ class AppengineServerGroupBasicSettingsCtrl implements IController {
     if (!this.$scope.command.gitCredentialType) {
       this.onAccountChange();
     }
-    this.containerImageArtifactTypes = [ArtifactTypePatterns.DOCKER_IMAGE];
+
+    this.$scope.containerArtifactDelegate = new NgAppEngineDeployArtifactDelegate($scope, [
+      ArtifactTypePatterns.DOCKER_IMAGE,
+    ]);
+    this.$scope.containerArtifactController = new ExpectedArtifactSelectorViewController(
+      this.$scope.containerArtifactDelegate,
+    );
+    this.$scope.gcsArtifactDelegate = new NgAppEngineDeployArtifactDelegate($scope, [ArtifactTypePatterns.GCS_OBJECT]);
+    this.$scope.gcsArtifactController = new ExpectedArtifactSelectorViewController(this.$scope.gcsArtifactDelegate);
   }
 
   public isGitSource(): boolean {

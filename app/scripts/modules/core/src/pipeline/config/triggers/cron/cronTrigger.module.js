@@ -2,6 +2,7 @@
 
 const angular = require('angular');
 
+import { ArtifactTypePatterns } from 'core/artifact';
 import { UUIDGenerator } from 'core/utils/uuid.service';
 import { Registry } from 'core/registry';
 import { ServiceAccountReader } from 'core/serviceAccount/ServiceAccountReader';
@@ -12,8 +13,8 @@ import './cronTrigger.less';
 module.exports = angular
   .module('spinnaker.core.pipeline.trigger.cron', [
     require('angular-cron-gen'),
-    require('../trigger.directive.js').name,
-    require('./cron.validator.directive.js').name,
+    require('../trigger.directive').name,
+    require('./cron.validator.directive').name,
   ])
   .config(function() {
     Registry.pipeline.registerTrigger({
@@ -23,6 +24,8 @@ module.exports = angular
       controller: 'CronTriggerCtrl',
       controllerAs: 'vm',
       templateUrl: require('./cronTrigger.html'),
+      executionTriggerLabel: trigger => trigger.cronExpression,
+      excludedArtifactTypePatterns: [ArtifactTypePatterns.JENKINS_FILE],
       validators: [
         {
           type: 'serviceAccountAccess',
@@ -33,26 +36,31 @@ module.exports = angular
       ],
     });
   })
-  .controller('CronTriggerCtrl', function(trigger) {
-    this.trigger = trigger;
-    this.fiatEnabled = SETTINGS.feature.fiatEnabled;
+  .controller('CronTriggerCtrl', [
+    'trigger',
+    function(trigger) {
+      this.trigger = trigger;
+      this.fiatEnabled = SETTINGS.feature.fiatEnabled;
 
-    ServiceAccountReader.getServiceAccounts().then(accounts => {
-      this.serviceAccounts = accounts || [];
-    });
+      ServiceAccountReader.getServiceAccounts().then(accounts => {
+        this.serviceAccounts = accounts || [];
+      });
 
-    this.validationMessages = {};
+      this.validationMessages = {};
 
-    trigger.id = trigger.id || UUIDGenerator.generateUuid();
-    trigger.cronExpression = trigger.cronExpression || '0 0 10 ? * MON-FRI *';
+      trigger.id = trigger.id || UUIDGenerator.generateUuid();
+      trigger.cronExpression = trigger.cronExpression || '0 0 10 ? * MON-FRI *';
 
-    this.cronOptions = {
-      formSelectClass: 'form-control input-sm',
-      hideAdvancedTab: false,
-      hideSeconds: true,
-      use24HourTime: true,
-    };
-  })
-  .run($templateCache =>
-    $templateCache.put('spinnaker-custom-cron-picker-template', $templateCache.get(require('./cronPicker.html'))),
-  );
+      this.cronOptions = {
+        formSelectClass: 'form-control input-sm',
+        hideAdvancedTab: false,
+        hideSeconds: true,
+        use24HourTime: true,
+      };
+    },
+  ])
+  .run([
+    '$templateCache',
+    $templateCache =>
+      $templateCache.put('spinnaker-custom-cron-picker-template', $templateCache.get(require('./cronPicker.html'))),
+  ]);

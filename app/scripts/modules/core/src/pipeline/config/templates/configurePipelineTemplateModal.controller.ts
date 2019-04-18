@@ -49,6 +49,15 @@ export class ConfigurePipelineTemplateModalController implements IController {
   private template: IPipelineTemplate;
   private source: string;
 
+  public static $inject = [
+    '$scope',
+    '$uibModalInstance',
+    'application',
+    'pipelineTemplateConfig',
+    'isNew',
+    'pipelineId',
+    'executionId',
+  ];
   constructor(
     private $scope: IScope,
     private $uibModalInstance: IModalInstanceService,
@@ -57,9 +66,7 @@ export class ConfigurePipelineTemplateModalController implements IController {
     public isNew: boolean,
     private pipelineId: string,
     private executionId: string,
-  ) {
-    'ngInject';
-  }
+  ) {}
 
   public $onInit(): void {
     this.initialize();
@@ -67,7 +74,9 @@ export class ConfigurePipelineTemplateModalController implements IController {
 
   public initialize(): void {
     const { config } = this.pipelineTemplateConfig;
-    const inherit: string[] = (config.configuration || { inherit: [] }).inherit;
+    const defaultConfiguration = { inherit: ['expectedArtifacts', 'parameters', 'triggers'] };
+    const inherit: string[] = (config.configuration || defaultConfiguration).inherit;
+
     this.state.inheritTemplateExpectedArtifacts = inherit.includes('expectedArtifacts');
     this.state.inheritTemplateParameters = inherit.includes('parameters');
     this.state.inheritTemplateTriggers = inherit.includes('triggers');

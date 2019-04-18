@@ -6,12 +6,12 @@ import { IBuild, IJobConfig } from 'core/domain';
 
 export enum BuildServiceType {
   Jenkins = 'jenkins',
-  Travis  = 'travis',
+  Travis = 'travis',
   Wercker = 'wercker',
+  Concourse = 'concourse',
 }
 
 export class IgorService {
-
   public static listMasters(buildType: BuildServiceType = null): IPromise<string[]> {
     const allMasters: IPromise<string[]> = API.one('v2')
       .one('builds')
@@ -25,6 +25,8 @@ export class IgorService {
         return allMasters.then(masters => masters.filter(master => !/^travis-/.test(master)));
       case BuildServiceType.Travis:
         return allMasters.then(masters => masters.filter(master => /^travis-/.test(master)));
+      case BuildServiceType.Concourse:
+        return allMasters.then(masters => masters.filter(master => /^concourse-/.test(master)));
       default:
         return allMasters;
     }
@@ -53,6 +55,12 @@ export class IgorService {
       .one(master)
       .one('jobs')
       .one(job)
+      .get();
+  }
+
+  public static getGcbAccounts(): IPromise<String[]> {
+    return API.one('gcb')
+      .one('accounts')
       .get();
   }
 }

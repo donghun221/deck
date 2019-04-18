@@ -11,13 +11,13 @@ import { AuthenticationService, BakeExecutionLabel, BakeryReader, Registry } fro
   execution details.
  */
 module.exports = angular
-  .module('spinnaker.docker.pipeline.stage.bakeStage', [require('./bakeExecutionDetails.controller.js').name])
+  .module('spinnaker.docker.pipeline.stage.bakeStage', [require('./bakeExecutionDetails.controller').name])
   .config(function() {
     Registry.pipeline.registerStage({
       provides: 'bake',
       cloudProvider: 'docker',
       label: 'Bake',
-      description: 'Bakes an image in the specified region',
+      description: 'Bakes an image',
       templateUrl: require('./bakeStage.html'),
       executionDetailsUrl: require('./bakeExecutionDetails.html'),
       executionLabelComponent: BakeExecutionLabel,
@@ -29,27 +29,28 @@ module.exports = angular
       restartable: true,
     });
   })
-  .controller('dockerBakeStageCtrl', function($scope, $q) {
-    var stage = $scope.stage;
+  .controller('dockerBakeStageCtrl', [
+    '$scope',
+    '$q',
+    function($scope, $q) {
+      var stage = $scope.stage;
 
-    stage.region = 'global';
+      stage.region = 'global';
 
-    if (!$scope.stage.user) {
-      $scope.stage.user = AuthenticationService.getAuthenticatedUser().name;
-    }
+      if (!$scope.stage.user) {
+        $scope.stage.user = AuthenticationService.getAuthenticatedUser().name;
+      }
 
-    $scope.viewState = {
-      loading: true,
-    };
+      $scope.viewState = {
+        loading: true,
+      };
 
-    function initialize() {
-      $scope.viewState.providerSelected = true;
-      $q
-        .all({
+      function initialize() {
+        $scope.viewState.providerSelected = true;
+        $q.all({
           baseOsOptions: BakeryReader.getBaseOsOptions('docker'),
           baseLabelOptions: BakeryReader.getBaseLabelOptions(),
-        })
-        .then(function(results) {
+        }).then(function(results) {
           $scope.baseOsOptions = results.baseOsOptions.baseImages;
           $scope.baseLabelOptions = results.baseLabelOptions;
 
@@ -61,17 +62,18 @@ module.exports = angular
           }
           $scope.viewState.loading = false;
         });
-    }
+      }
 
-    function deleteEmptyProperties() {
-      _.forOwn($scope.stage, function(val, key) {
-        if (val === '') {
-          delete $scope.stage[key];
-        }
-      });
-    }
+      function deleteEmptyProperties() {
+        _.forOwn($scope.stage, function(val, key) {
+          if (val === '') {
+            delete $scope.stage[key];
+          }
+        });
+      }
 
-    $scope.$watch('stage', deleteEmptyProperties, true);
+      $scope.$watch('stage', deleteEmptyProperties, true);
 
-    initialize();
-  });
+      initialize();
+    },
+  ]);

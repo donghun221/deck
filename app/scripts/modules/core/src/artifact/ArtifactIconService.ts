@@ -18,7 +18,6 @@ export class ArtifactIconService {
     if (type == null) {
       return unknownArtifactPath;
     }
-
     const icon = ArtifactIconService.icons.find(entry => entry.type.test(type));
     if (icon === undefined) {
       return null;
@@ -35,3 +34,8 @@ ArtifactIconService.registerType(ArtifactTypePatterns.GITHUB_FILE, require('./ic
 ArtifactIconService.registerType(ArtifactTypePatterns.GITLAB_FILE, require('./icons/gitlab-file-artifact.svg'));
 ArtifactIconService.registerType(ArtifactTypePatterns.BITBUCKET_FILE, require('./icons/bitbucket-file-artifact.svg'));
 ArtifactIconService.registerType(ArtifactTypePatterns.S3_OBJECT, require('./icons/s3-object-artifact.svg'));
+ArtifactIconService.registerType(ArtifactTypePatterns.HELM_CHART, require('./icons/helm-chart-artifact.svg'));
+ArtifactIconService.registerType(ArtifactTypePatterns.IVY_FILE, require('./icons/ivy-artifact.svg'));
+ArtifactIconService.registerType(ArtifactTypePatterns.JENKINS_FILE, require('./icons/jenkins-file-artifact.svg'));
+ArtifactIconService.registerType(ArtifactTypePatterns.MAVEN_FILE, require('./icons/maven-artifact.svg'));
+ArtifactIconService.registerType(ArtifactTypePatterns.HTTP_FILE, require('./icons/http-artifact.svg'));

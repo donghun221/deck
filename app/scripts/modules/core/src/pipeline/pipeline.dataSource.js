@@ -2,14 +2,17 @@ const angular = require('angular');
 
 import { ApplicationDataSourceRegistry } from 'core/application/service/ApplicationDataSourceRegistry';
 import { DELIVERY_KEY } from 'core/application/nav/defaultCategories';
+import { EntityTagsReader } from 'core/entityTag/EntityTagsReader';
 import { EXECUTION_SERVICE } from './service/execution.service';
 import { PipelineConfigService } from 'core/pipeline/config/services/PipelineConfigService';
 import { SETTINGS } from 'core/config/settings';
 import { CLUSTER_SERVICE } from 'core/cluster/cluster.service';
 
-module.exports = angular
-  .module('spinnaker.core.pipeline.dataSource', [EXECUTION_SERVICE, CLUSTER_SERVICE])
-  .run(function($q, executionService, clusterService) {
+module.exports = angular.module('spinnaker.core.pipeline.dataSource', [EXECUTION_SERVICE, CLUSTER_SERVICE]).run([
+  '$q',
+  'executionService',
+  'clusterService',
+  function($q, executionService, clusterService) {
     let addExecutions = (application, executions) => {
       executionService.transformExecutions(application, executions, application.executions.data);
       return $q.when(executionService.addExecutionsToApplication(application, executions));
@@ -46,7 +49,16 @@ module.exports = angular
     };
 
     let executionsLoaded = application => {
+      addExecutionTags(application);
       executionService.removeCompletedExecutionsFromRunningData(application);
+    };
+
+    let addExecutionTags = application => {
+      EntityTagsReader.addTagsToExecutions(application);
+    };
+
+    let addPipelineTags = application => {
+      EntityTagsReader.addTagsToPipelines(application);
     };
 
     if (SETTINGS.feature.pipelines !== false) {
@@ -71,6 +83,7 @@ module.exports = angular
         key: 'pipelineConfigs',
         loader: loadPipelineConfigs,
         onLoad: addPipelineConfigs,
+        afterLoad: addPipelineTags,
         lazy: true,
         visible: false,
       });
@@ -83,4 +96,5 @@ module.exports = angular
         afterLoad: runningExecutionsLoaded,
       });
     }
-  });
+  },
+]);

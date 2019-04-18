@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { get } from 'lodash';
+import { get, has } from 'lodash';
 import { Option } from 'react-select';
 import { IPromise } from 'angular';
 
@@ -54,6 +54,7 @@ export class PipelineTriggerTemplate extends React.Component<
 
   private initialize = () => {
     const { command } = this.props;
+    command.triggerInvalid = true;
     const trigger = command.trigger as IPipelineTrigger;
 
     // structure is a little different if this is a re-run; need to extract the fields from the parentExecution
@@ -112,6 +113,7 @@ export class PipelineTriggerTemplate extends React.Component<
   private updateSelectedExecution = (item: IExecution) => {
     this.props.command.extraFields.parentPipelineId = item.id;
     this.props.command.extraFields.parentPipelineApplication = item.application;
+    this.props.command.triggerInvalid = false;
     this.setState({ selectedExecution: item.id });
   };
 
@@ -126,7 +128,7 @@ export class PipelineTriggerTemplate extends React.Component<
 
   private optionRenderer = (option: Option<string>) => {
     const execution = this.getExecutionFromId(option.value);
-    const scm = execution.buildInfo.scm && execution.buildInfo.scm[0];
+    const scm = has(execution, 'buildInfo.scm[0]') && execution.buildInfo.scm[0];
 
     return (
       <span style={{ fontSize: '12px' }}>
@@ -137,7 +139,8 @@ export class PipelineTriggerTemplate extends React.Component<
         {scm && (
           <span>
             <br />
-            {scm.branch} ({scm.sha1 && scm.sha1.substr(0, 6)}): {scm.message && scm.message.substr(0, 30)}
+            {scm.branch} ({scm.sha1 && scm.sha1.substr(0, 6)}
+            ): {scm.message && scm.message.substr(0, 30)}
             {scm.message && scm.message.length > 30 && <span>…</span>}
           </span>
         )}

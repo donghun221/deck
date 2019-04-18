@@ -9,11 +9,11 @@ import { AWS_SERVER_GROUP_TRANSFORMER } from './serverGroup/serverGroup.transfor
 import './validation/ApplicationNameValidator';
 import { VPC_MODULE } from './vpc/vpc.module';
 import { SUBNET_RENDERER } from './subnet/subnet.renderer';
-import { SUBNET_SELECT_FIELD_COMPONENT } from './subnet/subnetSelectField.component';
 import { SERVER_GROUP_DETAILS_MODULE } from './serverGroup/details/serverGroupDetails.module';
 import { COMMON_MODULE } from './common/common.module';
 import './help/amazon.help';
 
+import { AwsImageReader } from './image';
 import { AmazonLoadBalancerClusterContainer } from './loadBalancer/AmazonLoadBalancerClusterContainer';
 import { AmazonLoadBalancersTag } from './loadBalancer/AmazonLoadBalancersTag';
 
@@ -40,6 +40,9 @@ import {
   SecurityGroupsDetailsSection,
   TagsDetailsSection,
 } from './serverGroup/details/sections';
+
+import { DEPLOY_CLOUDFORMATION_STACK_STAGE } from './pipeline/stages/deployCloudFormation/deployCloudFormationStackStage';
+import { CLOUDFORMATION_TEMPLATE_ENTRY } from './pipeline/stages/deployCloudFormation/cloudFormationTemplateEntry.component';
 
 // load all templates into the $templateCache
 const templates = require.context('./', true, /\.html$/);
@@ -72,22 +75,18 @@ module(AMAZON_MODULE, [
   require('./instance/details/instance.details.controller').name,
   AWS_SECURITY_GROUP_MODULE,
   SUBNET_RENDERER,
-  SUBNET_SELECT_FIELD_COMPONENT,
   VPC_MODULE,
-  require('./image/image.reader').name,
-  require('./cache/cacheConfigurer.service').name,
   require('./search/searchResultFormatter').name,
+  DEPLOY_CLOUDFORMATION_STACK_STAGE,
+  CLOUDFORMATION_TEMPLATE_ENTRY,
 ]).config(() => {
   CloudProviderRegistry.registerProvider('aws', {
     name: 'Amazon',
     logo: {
       path: require('./logo/amazon.logo.svg'),
     },
-    cache: {
-      configurer: 'awsCacheConfigurer',
-    },
     image: {
-      reader: 'awsImageReader',
+      reader: AwsImageReader,
     },
     serverGroup: {
       transformer: 'awsServerGroupTransformer',

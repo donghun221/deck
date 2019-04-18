@@ -1,15 +1,15 @@
 import * as React from 'react';
 
-import { HoverablePopover, IEntityTags } from 'core';
-
-import * as moment from 'moment';
+import { HoverablePopover } from 'core/presentation';
+import { IEntityTags } from 'core/domain';
+import { relativeTime } from 'core/utils/timeFormatters';
 
 export interface IEphemeralPopoverProps {
   entity?: any;
 }
 
 export interface IEphemeralPopoverState {
-  ttl?: string;
+  ttl?: number;
 }
 
 export class EphemeralPopover extends React.Component<IEphemeralPopoverProps, IEphemeralPopoverState> {
@@ -19,12 +19,12 @@ export class EphemeralPopover extends React.Component<IEphemeralPopoverProps, IE
   }
 
   private getState(props: IEphemeralPopoverProps): IEphemeralPopoverState {
-    const entityTags: IEntityTags = props.entity.entityTags;
+    const entityTags: IEntityTags = props.entity && props.entity.entityTags;
     if (entityTags) {
       const ephemeralTag = entityTags.tags.filter(x => x.name === 'spinnaker:ttl')[0];
       if (ephemeralTag) {
         return {
-          ttl: moment(ephemeralTag.value.expiry).fromNow(true),
+          ttl: ephemeralTag.value.expiry,
         };
       }
     }
@@ -34,10 +34,13 @@ export class EphemeralPopover extends React.Component<IEphemeralPopoverProps, IE
 
   private PopoverContent = () => {
     const { ttl } = this.state;
+    const isInPast = !!ttl && Date.now() > ttl;
+    const ttlPhrase = relativeTime(ttl);
 
     return (
       <div>
-        This server group will be automatically destroyed in <strong>{ttl}</strong>.
+        This server group {isInPast ? 'was scheduled to be' : 'will be'} automatically destroyed{' '}
+        <strong>{ttlPhrase}</strong>.
       </div>
     );
   };

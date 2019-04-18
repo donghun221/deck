@@ -1,42 +1,37 @@
 import * as React from 'react';
 import * as classNames from 'classnames';
-import { orderBy } from 'lodash';
 
-import {
-  Application,
-  IClusterSubgroup,
-  IInstanceCounts,
-  IServerGroup,
-  IServerGroupManagerSubgroup,
-  ISortFilter,
-  ReactInjector,
-  ServerGroup,
-} from 'core';
+import { Application } from 'core/application';
+import { IClusterSubgroup } from 'core/cluster';
+import { IInstanceCounts, IServerGroup } from 'core/domain';
+import { ISortFilter } from 'core/filterModel';
+import { ReactInjector } from 'core/reactShims';
+import { ServerGroup } from 'core/serverGroup';
+
 import { ServerGroupManagerHeading } from './ServerGroupManagerHeading';
 
 interface IServerGroupManagerProps {
-  manager: IServerGroupManagerSubgroup;
   grouping: IClusterSubgroup;
+  manager: string;
   application: Application;
   sortFilter: ISortFilter;
+  serverGroups: IServerGroup[];
 }
 
 export class ServerGroupManager extends React.Component<IServerGroupManagerProps> {
   private isSelected = (): boolean => {
-    const { manager } = this.props;
-    const [serverGroup] = manager.serverGroups;
+    const { manager, serverGroups } = this.props;
     const params = {
-      accountId: serverGroup.account,
-      region: serverGroup.region,
-      provider: serverGroup.cloudProvider,
-      serverGroupManager: manager.heading,
+      accountId: serverGroups[0].account,
+      region: serverGroups[0].region,
+      provider: serverGroups[0].cloudProvider,
+      serverGroupManager: manager,
     };
     return ReactInjector.$state.includes('**.serverGroupManager', params);
   };
 
   private handleClick = (e: React.MouseEvent<HTMLElement>): void => {
-    const { manager } = this.props;
-    const [serverGroup] = manager.serverGroups;
+    const { manager, serverGroups } = this.props;
     const nextState = ReactInjector.$state.current.name.endsWith('.clusters')
       ? '.serverGroupManager'
       : '^.serverGroupManager';
@@ -44,17 +39,15 @@ export class ServerGroupManager extends React.Component<IServerGroupManagerProps
     e.preventDefault();
     e.stopPropagation();
     ReactInjector.$state.go(nextState, {
-      accountId: serverGroup.account,
-      region: serverGroup.region,
-      provider: serverGroup.cloudProvider,
-      serverGroupManager: manager.heading,
+      accountId: serverGroups[0].account,
+      region: serverGroups[0].region,
+      provider: serverGroups[0].cloudProvider,
+      serverGroupManager: manager,
     });
   };
 
   private buildHealthCounts = (): IInstanceCounts => {
-    const {
-      manager: { serverGroups },
-    } = this.props;
+    const { serverGroups } = this.props;
     const pick = (key: keyof IInstanceCounts) => (total: number, serverGroup: IServerGroup): number =>
       total + serverGroup.instanceCounts[key];
 
@@ -70,29 +63,26 @@ export class ServerGroupManager extends React.Component<IServerGroupManagerProps
   };
 
   public render() {
-    const { manager, application, sortFilter, grouping } = this.props;
-    const [serverGroup] = manager.serverGroups;
+    const { application, sortFilter, grouping, serverGroups, manager } = this.props;
     const classes = {
       active: this.isSelected(),
       clickable: true,
       'clickable-row': true,
       'rollup-details': true,
     };
-    const sortedServerGroups = orderBy(
-      manager.serverGroups,
-      [manager.serverGroups.every(sg => !!sg.moniker) ? 'moniker.sequence' : 'name'],
-      ['desc'],
-    );
 
     return (
       <div className={classNames(classes)}>
         <ServerGroupManagerHeading
           onClick={this.handleClick}
           health={this.buildHealthCounts()}
-          provider={serverGroup.type}
+          provider={serverGroups[0].type}
+          heading={manager}
+          grouping={grouping}
+          app={application}
         />
 
-        {sortedServerGroups.map((sg: IServerGroup) => (
+        {serverGroups.map((sg: IServerGroup) => (
           <ServerGroup
             key={sg.name}
             serverGroup={sg}

@@ -13,20 +13,31 @@
       <v2-wizard-page key="networking" label="Networking" done="true">
         <ng-include src="pages.networking"></ng-include>
       </v2-wizard-page>
-      <v2-wizard-page key="verticalScaling" label="Vertical Scaling" done="true">
-        <ng-include src="pages.verticalScaling"></ng-include>
+      <v2-wizard-page key="container" label="Container" done="true">
+        <ng-include src="pages.container"></ng-include>
       </v2-wizard-page>
       <v2-wizard-page key="horizontalScaling" label="Horizontal Scaling" done="true">
         <ng-include src="pages.horizontalScaling"></ng-include>
+      </v2-wizard-page>
+      <v2-wizard-page key="logging" label="Logging" done="true">
+        <ng-include src="pages.logging"></ng-include>
       </v2-wizard-page>
       <v2-wizard-page key="advanced" label="Advanced Settings" mark-complete-on-view="false" done="true">
         <ng-include src="pages.advancedSettings"></ng-include>
       </v2-wizard-page>
     </v2-modal-wizard>
     <div class="modal-footer" ng-if="state.loaded">
-      <button ng-disabled="taskMonitor.submitting" class="btn btn-default btn-cancel" ng-click="ctrl.cancel()">Cancel</button>
-      <submit-button ng-if="ctrl.showSubmitButton()" is-disabled="!ctrl.isValid() || taskMonitor.submitting" label="command.viewState.submitButtonLabel"
-      submitting="taskMonitor.submitting" on-click="ctrl.submit()" is-new="true"></submit-button>
+      <button ng-disabled="taskMonitor.submitting" class="btn btn-default btn-cancel" ng-click="ctrl.cancel()">
+        Cancel
+      </button>
+      <submit-button
+        ng-if="ctrl.showSubmitButton()"
+        is-disabled="!ctrl.isValid() || taskMonitor.submitting"
+        label="command.viewState.submitButtonLabel"
+        submitting="taskMonitor.submitting"
+        on-click="ctrl.submit()"
+        is-new="true"
+      ></submit-button>
     </div>
   </div>
 </form>

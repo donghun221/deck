@@ -1,7 +1,8 @@
 import { ILoadBalancerSourceData } from '@spinnaker/core';
 
-import { IListenerActionType, IListenerRule } from './IAmazonLoadBalancer';
-import { NLBListenerProtocol } from 'amazon';
+import { IListenerAction, NLBListenerProtocol } from 'amazon/domain';
+
+import { IListenerRule } from './IAmazonLoadBalancer';
 
 export interface IAmazonContainerServerGroupSourceData {
   detachedInstances: string[];
@@ -111,11 +112,7 @@ export interface IApplicationLoadBalancerCertificateSourceData {
 
 export interface IApplicationLoadBalancerListenerSourceData {
   certificates?: IApplicationLoadBalancerCertificateSourceData[];
-  defaultActions: Array<{
-    targetGroupName: string;
-    type: IListenerActionType;
-    order: number;
-  }>;
+  defaultActions: IListenerAction[];
   listenerArn: string;
   loadBalancerName: string;
   port: number;

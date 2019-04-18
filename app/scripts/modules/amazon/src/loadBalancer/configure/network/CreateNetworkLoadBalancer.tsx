@@ -1,19 +1,18 @@
 import * as React from 'react';
 import { cloneDeep, get } from 'lodash';
 import { FormikErrors } from 'formik';
-import { IDeferred, IPromise } from 'angular';
-import { IModalServiceInstance } from 'angular-ui-bootstrap';
-import { $q } from 'ngimport';
+import { IPromise } from 'angular';
 
 import {
   AccountService,
+  ILoadBalancerModalProps,
   LoadBalancerWriter,
   ReactInjector,
+  ReactModal,
   TaskMonitor,
   WizardModal,
+  WizardPage,
   noop,
-  ReactModal,
-  ILoadBalancerModalProps,
 } from '@spinnaker/core';
 
 import { AWSProviderSettings } from 'amazon/aws.settings';
@@ -22,6 +21,7 @@ import { AwsReactInjector } from 'amazon/reactShims';
 
 import { NLBListeners } from './NLBListeners';
 import { TargetGroups } from './TargetGroups';
+import { NLBAdvancedSettings } from './NLBAdvancedSettings';
 import { LoadBalancerLocation } from '../common/LoadBalancerLocation';
 
 import '../common/configure.less';
@@ -36,9 +36,6 @@ export interface ICreateApplicationLoadBalancerState {
   taskMonitor: TaskMonitor;
 }
 
-type NetworkLoadBalancerModal = new () => WizardModal<IAmazonNetworkLoadBalancerUpsertCommand>;
-const NetworkLoadBalancerModal: NetworkLoadBalancerModal = WizardModal as any;
-
 export class CreateNetworkLoadBalancer extends React.Component<
   ICreateNetworkLoadBalancerProps,
   ICreateApplicationLoadBalancerState
@@ -48,9 +45,9 @@ export class CreateNetworkLoadBalancer extends React.Component<
     dismissModal: noop,
   };
 
+  private _isUnmounted = false;
   private refreshUnsubscribe: () => void;
   private certificateTypes = get(AWSProviderSettings, 'loadBalancers.certificateTypes', ['iam', 'acm']);
-  private $uibModalInstanceEmulation: IModalServiceInstance & { deferred?: IDeferred<any> };
 
   public static show(props: ICreateNetworkLoadBalancerProps): Promise<IAmazonNetworkLoadBalancerUpsertCommand> {
     const modalProps = { dialogClassName: 'wizard-modal modal-lg' };
@@ -69,15 +66,6 @@ export class CreateNetworkLoadBalancer extends React.Component<
       loadBalancerCommand,
       taskMonitor: null,
     };
-
-    const deferred = $q.defer();
-    const promise = deferred.promise;
-    this.$uibModalInstanceEmulation = {
-      result: promise,
-      close: () => this.props.dismissModal(),
-      dismiss: () => this.props.dismissModal(),
-    } as IModalServiceInstance;
-    Object.assign(this.$uibModalInstanceEmulation, { deferred });
   }
 
   protected certificateIdAsARN(
@@ -168,6 +156,10 @@ export class CreateNetworkLoadBalancer extends React.Component<
   }
 
   protected onApplicationRefresh(values: IAmazonNetworkLoadBalancerUpsertCommand): void {
+    if (this._isUnmounted) {
+      return;
+    }
+
     this.refreshUnsubscribe = undefined;
     this.props.dismissModal();
     this.setState({ taskMonitor: undefined });
@@ -187,6 +179,7 @@ export class CreateNetworkLoadBalancer extends React.Component<
   }
 
   public componentWillUnmount(): void {
+    this._isUnmounted = true;
     if (this.refreshUnsubscribe) {
       this.refreshUnsubscribe();
     }
@@ -212,7 +205,7 @@ export class CreateNetworkLoadBalancer extends React.Component<
       const taskMonitor = new TaskMonitor({
         application: app,
         title: `${isNew ? 'Creating' : 'Updating'} your load balancer`,
-        modalInstance: this.$uibModalInstanceEmulation,
+        modalInstance: TaskMonitor.modalInstanceEmulation(() => this.props.dismissModal()),
         onTaskComplete: () => this.onTaskComplete(loadBalancerCommandFormatted),
       });
 
@@ -228,7 +221,6 @@ export class CreateNetworkLoadBalancer extends React.Component<
   };
 
   private validate = (): FormikErrors<IAmazonNetworkLoadBalancerUpsertCommand> => {
-    this.setState({});
     const errors = {} as FormikErrors<IAmazonNetworkLoadBalancerUpsertCommand>;
     return errors;
   };
@@ -237,19 +229,15 @@ export class CreateNetworkLoadBalancer extends React.Component<
     const { app, dismissModal, forPipelineConfig, loadBalancer } = this.props;
     const { isNew, loadBalancerCommand, taskMonitor } = this.state;
 
-    const hideSections = new Set<string>();
-
-    if (!isNew && !forPipelineConfig) {
-      hideSections.add(LoadBalancerLocation.label);
-    }
-
     let heading = forPipelineConfig ? 'Configure Network Load Balancer' : 'Create New Network Load Balancer';
     if (!isNew) {
       heading = `Edit ${loadBalancerCommand.name}: ${loadBalancerCommand.region}: ${loadBalancerCommand.credentials}`;
     }
 
+    const showLocationSection = isNew || forPipelineConfig;
+
     return (
-      <NetworkLoadBalancerModal
+      <WizardModal<IAmazonNetworkLoadBalancerUpsertCommand>
         heading={heading}
         initialValues={loadBalancerCommand}
         taskMonitor={taskMonitor}
@@ -257,17 +245,51 @@ export class CreateNetworkLoadBalancer extends React.Component<
         closeModal={this.submit}
         submitButtonLabel={forPipelineConfig ? (isNew ? 'Add' : 'Done') : isNew ? 'Create' : 'Update'}
         validate={this.validate}
-        hideSections={hideSections}
-      >
-        <LoadBalancerLocation
-          app={app}
-          isNew={isNew}
-          forPipelineConfig={forPipelineConfig}
-          loadBalancer={loadBalancer}
-        />
-        <TargetGroups app={app} isNew={isNew} loadBalancer={loadBalancer} done={true} />
-        <NLBListeners done={true} />
-      </NetworkLoadBalancerModal>
+        render={({ formik, nextIdx, wizard }) => (
+          <>
+            {showLocationSection && (
+              <WizardPage
+                label="Location"
+                wizard={wizard}
+                order={nextIdx()}
+                render={({ innerRef }) => (
+                  <LoadBalancerLocation
+                    app={app}
+                    forPipelineConfig={forPipelineConfig}
+                    formik={formik}
+                    isNew={isNew}
+                    loadBalancer={loadBalancer}
+                    ref={innerRef}
+                  />
+                )}
+              />
+            )}
+
+            <WizardPage
+              label="Target Groups"
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => (
+                <TargetGroups ref={innerRef} formik={formik} app={app} isNew={isNew} loadBalancer={loadBalancer} />
+              )}
+            />
+
+            <WizardPage
+              label="Listeners"
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => <NLBListeners ref={innerRef} formik={formik} />}
+            />
+
+            <WizardPage
+              label="Advanced Settings"
+              wizard={wizard}
+              order={nextIdx()}
+              render={({ innerRef }) => <NLBAdvancedSettings ref={innerRef} formik={formik} />}
+            />
+          </>
+        )}
+      />
     );
   }
 }

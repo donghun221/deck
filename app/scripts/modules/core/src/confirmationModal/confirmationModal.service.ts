@@ -31,6 +31,7 @@ export class ConfirmationModalService {
     cancelButtonText: 'Cancel',
   };
 
+  public static $inject = ['$uibModal', '$sce'];
   public constructor(private $uibModal: IModalService, private $sce: ng.ISCEService) {}
 
   public confirm(params: IConfirmationModalParams): ng.IPromise<any> {
@@ -67,5 +68,5 @@ export class ConfirmationModalService {
 export const CONFIRMATION_MODAL_SERVICE = 'spinnaker.core.confirmationModal.service';
 module(CONFIRMATION_MODAL_SERVICE, [
   require('angular-ui-bootstrap'),
-  require('./confirmationModal.controller.js').name,
+  require('./confirmationModal.controller').name,
 ]).service('confirmationModalService', ConfirmationModalService);

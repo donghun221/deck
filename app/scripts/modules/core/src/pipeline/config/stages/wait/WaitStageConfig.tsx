@@ -1,9 +1,9 @@
-import { IStageConfigProps } from 'core/pipeline/config/stages/core/IStageConfigProps';
 import * as React from 'react';
 
-import { StageConfigField } from '../core/stageConfigField/StageConfigField';
-import { SpelNumberInput } from 'core/widgets/spelText/SpelNumberInput';
+import { IStageConfigProps } from 'core/pipeline';
+import { SpelNumberInput } from 'core/widgets';
 import { IStage } from 'core/domain';
+import { StageConfigField } from '../common/stageConfigField/StageConfigField';
 
 export interface IWaitStageConfigState {
   enableCustomSkipWaitText: boolean;
@@ -19,7 +19,8 @@ export class WaitStageConfig extends React.Component<IStageConfigProps, IWaitSta
     state: IWaitStageConfigState,
   ): IWaitStageConfigState {
     const { stage } = props;
-    if (!stage.waitTime) {
+    const { waitTime } = stage;
+    if (waitTime === undefined || (!Number.isNaN(waitTime) && waitTime < 0)) {
       stage.waitTime = 30;
     }
     return {
@@ -35,7 +36,8 @@ export class WaitStageConfig extends React.Component<IStageConfigProps, IWaitSta
   }
 
   private getState(stage: IStage): IWaitStageConfigState {
-    if (!stage.waitTime) {
+    const { waitTime } = stage;
+    if (waitTime === undefined || (!Number.isNaN(waitTime) && waitTime < 0)) {
       stage.waitTime = 30;
     }
     return {
@@ -72,7 +74,7 @@ export class WaitStageConfig extends React.Component<IStageConfigProps, IWaitSta
       <div className="form-horizontal">
         <StageConfigField label="Wait time (seconds)" fieldColumns={6}>
           <div>
-            <SpelNumberInput value={waitTime} onChange={this.updateWaitTime} />
+            <SpelNumberInput value={waitTime} min={0} onChange={this.updateWaitTime} />
           </div>
         </StageConfigField>
         <div className="form-group">

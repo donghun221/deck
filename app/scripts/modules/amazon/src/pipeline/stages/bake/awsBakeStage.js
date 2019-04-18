@@ -10,13 +10,13 @@ import { AWSProviderSettings } from 'amazon/aws.settings';
 import { PipelineTemplates, BakeExecutionLabel, BakeryReader, Registry, SETTINGS } from '@spinnaker/core';
 
 module.exports = angular
-  .module('spinnaker.amazon.pipeline.stage.bakeStage', [require('./bakeExecutionDetails.controller.js').name])
+  .module('spinnaker.amazon.pipeline.stage.bakeStage', [require('./bakeExecutionDetails.controller').name])
   .config(function() {
     Registry.pipeline.registerStage({
       provides: 'bake',
       cloudProvider: 'aws',
       label: 'Bake',
-      description: 'Bakes an image in the specified region',
+      description: 'Bakes an image',
       templateUrl: require('./bakeStage.html'),
       executionDetailsUrl: require('./bakeExecutionDetails.html'),
       executionLabelComponent: BakeExecutionLabel,
@@ -28,41 +28,45 @@ module.exports = angular
         { type: 'requiredField', fieldName: 'package' },
         { type: 'requiredField', fieldName: 'regions' },
         {
-          type: 'stageOrTriggerBeforeType',
-          stageTypes: ['jenkins', 'travis'],
+          type: 'upstreamVersionProvided',
           checkParentTriggers: true,
-          message:
-            'Bake stages should always have a Jenkins/Travis stage or trigger preceding them.<br> Otherwise, ' +
-            'Spinnaker will bake and deploy the most-recently built package.',
+          getMessage: labels =>
+            'Bake stages should always have a stage or trigger preceding them that provides version information: ' +
+            '<ul>' +
+            labels.map(label => `<li>${label}</li>`).join('') +
+            '</ul>' +
+            'Otherwise, Spinnaker will bake and deploy the most-recently built package.',
         },
       ],
       restartable: true,
     });
   })
-  .controller('awsBakeStageCtrl', function($scope, $q, $uibModal) {
-    $scope.stage.extendedAttributes = $scope.stage.extendedAttributes || {};
-    $scope.stage.regions = $scope.stage.regions || [];
+  .controller('awsBakeStageCtrl', [
+    '$scope',
+    '$q',
+    '$uibModal',
+    function($scope, $q, $uibModal) {
+      $scope.stage.extendedAttributes = $scope.stage.extendedAttributes || {};
+      $scope.stage.regions = ($scope.stage.regions && $scope.stage.regions.sort()) || [];
 
-    if (!$scope.stage.user) {
-      $scope.stage.user = AuthenticationService.getAuthenticatedUser().name;
-    }
+      if (!$scope.stage.user) {
+        $scope.stage.user = AuthenticationService.getAuthenticatedUser().name;
+      }
 
-    $scope.viewState = {
-      loading: true,
-      roscoMode: SETTINGS.feature.roscoMode,
-      minRootVolumeSize: AWSProviderSettings.minRootVolumeSize,
-    };
+      $scope.viewState = {
+        loading: true,
+        roscoMode: SETTINGS.feature.roscoMode,
+        minRootVolumeSize: AWSProviderSettings.minRootVolumeSize,
+      };
 
-    function initialize() {
-      $q
-        .all({
+      function initialize() {
+        $q.all({
           regions: BakeryReader.getRegions('aws'),
           baseOsOptions: BakeryReader.getBaseOsOptions('aws'),
           baseLabelOptions: BakeryReader.getBaseLabelOptions(),
           vmTypes: ['hvm', 'pv'],
           storeTypes: ['ebs', 's3', 'docker'],
-        })
-        .then(function(results) {
+        }).then(function(results) {
           $scope.regions = results.regions;
           $scope.vmTypes = results.vmTypes;
           if (!$scope.stage.vmType && $scope.vmTypes && $scope.vmTypes.length) {
@@ -95,73 +99,74 @@ module.exports = angular
           $scope.showAdvancedOptions = showAdvanced();
           $scope.viewState.loading = false;
         });
-    }
-
-    function deleteEmptyProperties() {
-      _.forOwn($scope.stage, function(val, key) {
-        if (val === '') {
-          delete $scope.stage[key];
-        }
-      });
-    }
-
-    function showAdvanced() {
-      const stg = $scope.stage;
-      return !!(
-        stg.templateFileName ||
-        (stg.extendedAttributes && _.size(stg.extendedAttributes) > 0) ||
-        stg.varFileName ||
-        stg.baseName ||
-        stg.baseAmi ||
-        stg.amiName ||
-        stg.amiSuffix ||
-        stg.rootVolumeSize
-      );
-    }
-
-    this.addExtendedAttribute = function() {
-      if (!$scope.stage.extendedAttributes) {
-        $scope.stage.extendedAttributes = {};
       }
-      $uibModal
-        .open({
-          templateUrl: PipelineTemplates.addExtendedAttributes,
-          controller: 'bakeStageAddExtendedAttributeController',
-          controllerAs: 'addExtendedAttribute',
-          resolve: {
-            extendedAttribute: function() {
-              return {
-                key: '',
-                value: '',
-              };
+
+      function deleteEmptyProperties() {
+        _.forOwn($scope.stage, function(val, key) {
+          if (val === '') {
+            delete $scope.stage[key];
+          }
+        });
+      }
+
+      function showAdvanced() {
+        const stg = $scope.stage;
+        return !!(
+          stg.templateFileName ||
+          (stg.extendedAttributes && _.size(stg.extendedAttributes) > 0) ||
+          stg.varFileName ||
+          stg.baseName ||
+          stg.baseAmi ||
+          stg.amiName ||
+          stg.amiSuffix ||
+          stg.rootVolumeSize
+        );
+      }
+
+      this.addExtendedAttribute = function() {
+        if (!$scope.stage.extendedAttributes) {
+          $scope.stage.extendedAttributes = {};
+        }
+        $uibModal
+          .open({
+            templateUrl: PipelineTemplates.addExtendedAttributes,
+            controller: 'bakeStageAddExtendedAttributeController',
+            controllerAs: 'addExtendedAttribute',
+            resolve: {
+              extendedAttribute: function() {
+                return {
+                  key: '',
+                  value: '',
+                };
+              },
             },
-          },
-        })
-        .result.then(function(extendedAttribute) {
-          $scope.stage.extendedAttributes[extendedAttribute.key] = extendedAttribute.value;
-        })
-        .catch(() => {});
-    };
+          })
+          .result.then(function(extendedAttribute) {
+            $scope.stage.extendedAttributes[extendedAttribute.key] = extendedAttribute.value;
+          })
+          .catch(() => {});
+      };
 
-    this.removeExtendedAttribute = function(key) {
-      delete $scope.stage.extendedAttributes[key];
-    };
+      this.removeExtendedAttribute = function(key) {
+        delete $scope.stage.extendedAttributes[key];
+      };
 
-    this.showTemplateFileName = function() {
-      return $scope.viewState.roscoMode || $scope.stage.templateFileName;
-    };
+      this.showTemplateFileName = function() {
+        return $scope.viewState.roscoMode || $scope.stage.templateFileName;
+      };
 
-    this.showExtendedAttributes = function() {
-      return (
-        $scope.viewState.roscoMode || ($scope.stage.extendedAttributes && _.size($scope.stage.extendedAttributes) > 0)
-      );
-    };
+      this.showExtendedAttributes = function() {
+        return (
+          $scope.viewState.roscoMode || ($scope.stage.extendedAttributes && _.size($scope.stage.extendedAttributes) > 0)
+        );
+      };
 
-    this.showVarFileName = function() {
-      return $scope.viewState.roscoMode || $scope.stage.varFileName;
-    };
+      this.showVarFileName = function() {
+        return $scope.viewState.roscoMode || $scope.stage.varFileName;
+      };
 
-    $scope.$watch('stage', deleteEmptyProperties, true);
+      $scope.$watch('stage', deleteEmptyProperties, true);
 
-    initialize();
-  });
+      initialize();
+    },
+  ]);

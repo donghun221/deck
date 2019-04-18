@@ -1,8 +1,7 @@
 import * as React from 'react';
 import { get } from 'lodash';
 
-import { ExecutionDetailsSection, IExecutionDetailsSectionProps } from 'core/pipeline/config/stages/core';
-import { StageFailureMessage } from 'core/pipeline/details';
+import { ExecutionDetailsSection, IExecutionDetailsSectionProps, StageFailureMessage } from 'core/pipeline';
 
 export function ScriptExecutionDetails(props: IExecutionDetailsSectionProps) {
   const { stage } = props;
@@ -43,31 +42,28 @@ export function ScriptExecutionDetails(props: IExecutionDetailsSectionProps) {
         </div>
       )}
 
-      {!scriptRanAndFailed &&
-        stage.context.buildInfo &&
-        stage.context.buildInfo.url && (
-          <div className="row ng-scope">
-            <div className="col-md-12">
-              <div className="well alert alert-info">
-                <a href={`${stage.context.buildInfo.url}consoleText`} target="_blank">
-                  Script Results
-                </a>
-              </div>
+      {!scriptRanAndFailed && stage.context.buildInfo && stage.context.buildInfo.url && (
+        <div className="row ng-scope">
+          <div className="col-md-12">
+            <div className="well alert alert-info">
+              <a href={`${stage.context.buildInfo.url}consoleText`} target="_blank">
+                Script Results
+              </a>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
       {scriptRanAndFailed && (
         <div>
           <div className="alert alert-danger">
             Script execution failed.
             <span>Check </span>
-            {stage.context.buildInfo &&
-              stage.context.buildInfo.url && (
-                <a href={`${stage.context.buildInfo.url}consoleText`} target="_blank">
-                  the script results
-                </a>
-              )}
+            {stage.context.buildInfo && stage.context.buildInfo.url && (
+              <a href={`${stage.context.buildInfo.url}consoleText`} target="_blank">
+                the script results
+              </a>
+            )}
             <span> for details.</span>
           </div>
         </div>
@@ -78,6 +74,8 @@ export function ScriptExecutionDetails(props: IExecutionDetailsSectionProps) {
   );
 }
 
+// TODO: refactor this to not use namespace
+// eslint-disable-next-line
 export namespace ScriptExecutionDetails {
   export const title = 'scriptConfig';
 }

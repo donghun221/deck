@@ -1,19 +1,23 @@
 import * as React from 'react';
 import * as ReactGA from 'react-ga';
-import { clone, isEqual } from 'lodash';
+import { clone, isEqual, keyBy, truncate } from 'lodash';
 import { $location } from 'ngimport';
 import { Subscription } from 'rxjs';
 import * as classNames from 'classnames';
+import memoizeOne from 'memoize-one';
 
 import { Application } from 'core/application/application.model';
+import { CopyToClipboard } from 'core/utils';
 import { StageExecutionDetails } from 'core/pipeline/details/StageExecutionDetails';
 import { ExecutionStatus } from 'core/pipeline/status/ExecutionStatus';
+import { ExecutionParameters } from 'core/pipeline/status/ExecutionParameters';
 import { IExecution, IRestartDetails, IPipeline } from 'core/domain';
 import { IExecutionViewState, IPipelineGraphNode } from 'core/pipeline/config/graph/pipelineGraph.service';
+import { ResolvedArtifactList } from 'core/pipeline/status/ResolvedArtifactList';
 import { OrchestratedItemRunningTime } from './OrchestratedItemRunningTime';
 import { SETTINGS } from 'core/config/settings';
 import { AccountTag } from 'core/account';
-import { NgReact, ReactInjector } from 'core/reactShims';
+import { ReactInjector } from 'core/reactShims';
 import { duration, timestamp } from 'core/utils/timeFormatters';
 import { ISortFilter } from 'core/filterModel';
 import { ExecutionState } from 'core/state';
@@ -29,16 +33,20 @@ import './execution.less';
 export interface IExecutionProps {
   application: Application;
   execution: IExecution;
+  pipelineConfig: IPipeline;
   showDurations?: boolean;
   standalone?: boolean;
   title?: string | JSX.Element;
   dataSourceKey?: string;
   showAccountLabels?: boolean;
   onRerun?: (execution: IExecution, config: IPipeline) => void;
+  cancelHelpText?: string;
+  cancelConfirmationText?: string;
 }
 
 export interface IExecutionState {
   showingDetails: boolean;
+  showingParams: boolean;
   pipelinesUrl: string;
   viewState: IExecutionViewState;
   sortFilter: ISortFilter;
@@ -46,9 +54,17 @@ export interface IExecutionState {
   runningTimeInMs: number;
 }
 
+export interface IDisplayableParameter {
+  key: string;
+  value: string;
+  showTruncatedValue?: boolean;
+  valueTruncated?: string;
+}
+
 export class Execution extends React.Component<IExecutionProps, IExecutionState> {
   public static defaultProps: Partial<IExecutionProps> = {
     dataSourceKey: 'executions',
+    cancelHelpText: 'Cancel execution',
   };
 
   private stateChangeSuccessSubscription: Subscription;
@@ -56,13 +72,13 @@ export class Execution extends React.Component<IExecutionProps, IExecutionState>
 
   constructor(props: IExecutionProps) {
     super(props);
-    const { execution } = this.props;
+    const { execution, standalone } = this.props;
     const { $stateParams } = ReactInjector;
 
     const initialViewState = {
       activeStageId: Number($stateParams.stage),
       activeSubStageId: Number($stateParams.subStage),
-      executionId: execution.id,
+      executionId: $stateParams.executionId,
       canTriggerPipelineManually: false,
       canConfigure: false,
     };
@@ -71,6 +87,7 @@ export class Execution extends React.Component<IExecutionProps, IExecutionState>
 
     this.state = {
       showingDetails: this.invalidateShowingDetails(props),
+      showingParams: standalone,
       pipelinesUrl: [SETTINGS.gateUrl, 'pipelines/'].join('/'),
       viewState: initialViewState,
       sortFilter: ExecutionState.filterModel.asFilterModel.sortFilter,
@@ -114,7 +131,15 @@ export class Execution extends React.Component<IExecutionProps, IExecutionState>
 
   public toggleDetails = (stageIndex?: number, subIndex?: number): void => {
     const { executionService } = ReactInjector;
-    executionService.toggleDetails(this.props.execution, stageIndex, subIndex);
+    const { execution, application } = this.props;
+    executionService.hydrate(application, execution).then(() => {
+      executionService.toggleDetails(execution, stageIndex, subIndex);
+    });
+  };
+
+  public toggleParams = (): void => {
+    const { showingParams } = this.state;
+    this.setState({ showingParams: !showingParams });
   };
 
   public getUrl(): string {
@@ -141,18 +166,18 @@ export class Execution extends React.Component<IExecutionProps, IExecutionState>
   }
 
   public cancelExecution(): void {
+    const { application, execution, cancelConfirmationText } = this.props;
     const { executionService } = ReactInjector;
     const hasDeployStage =
-      this.props.execution.stages &&
-      this.props.execution.stages.some(stage => stage.type === 'deploy' || stage.type === 'cloneServerGroup');
+      execution.stages && execution.stages.some(stage => stage.type === 'deploy' || stage.type === 'cloneServerGroup');
     CancelModal.confirm({
-      header: `Really stop execution of ${this.props.execution.name}?`,
-      buttonText: `Stop running ${this.props.execution.name}`,
-      body: hasDeployStage
-        ? '<b>Note:</b> Any deployments that have begun will continue and need to be cleaned up manually.'
-        : null,
-      submitMethod: (reason, force) =>
-        executionService.cancelExecution(this.props.application, this.props.execution.id, force, reason),
+      header: `Really stop execution of ${execution.name}?`,
+      buttonText: `Stop running ${execution.name}`,
+      body:
+        hasDeployStage && !cancelConfirmationText
+          ? '*Note:* Any deployments that have begun will continue and need to be cleaned up manually.'
+          : cancelConfirmationText,
+      submitMethod: (reason, force) => executionService.cancelExecution(application, execution.id, force, reason),
     });
   }
 
@@ -175,6 +200,54 @@ export class Execution extends React.Component<IExecutionProps, IExecutionState>
       submitMethod: () => executionService.resumeExecution(this.props.application, this.props.execution.id),
     });
   }
+
+  private getDisplayableParameters = memoizeOne(
+    (
+      execution: IExecution,
+      pipelineConfig: IPipeline,
+    ): { displayableParameters: IDisplayableParameter[]; pinnedDisplayableParameters: IDisplayableParameter[] } => {
+      // these are internal parameters that are not useful to end users
+      const strategyExclusions = [
+        'parentPipelineId',
+        'strategy',
+        'parentStageId',
+        'deploymentDetails',
+        'cloudProvider',
+      ];
+
+      const truncateLength = 200;
+
+      const isParamDisplayable = (paramKey: string) =>
+        execution.isStrategy ? !strategyExclusions.includes(paramKey) : true;
+
+      const displayableParameters: IDisplayableParameter[] = Object.keys(
+        (execution.trigger && execution.trigger.parameters) || {},
+      )
+        .filter(isParamDisplayable)
+        .sort()
+        .map((key: string) => {
+          const value = JSON.stringify(execution.trigger.parameters[key]);
+          const showTruncatedValue = value.length > truncateLength;
+          let valueTruncated;
+          if (showTruncatedValue) {
+            valueTruncated = truncate(value, { length: truncateLength });
+          }
+          return { key, value, valueTruncated, showTruncatedValue };
+        });
+
+      let pinnedDisplayableParameters: IDisplayableParameter[] = [];
+
+      if (pipelineConfig) {
+        const paramConfigIndexByName = keyBy(pipelineConfig.parameterConfig, 'name');
+        const isParamPinned = (param: IDisplayableParameter): boolean =>
+          paramConfigIndexByName[param.key] && paramConfigIndexByName[param.key].pinned; // an older execution's parameter might be missing from a newer pipelineConfig.parameterConfig
+
+        pinnedDisplayableParameters = displayableParameters.filter(isParamPinned);
+      }
+
+      return { displayableParameters, pinnedDisplayableParameters };
+    },
+  );
 
   public componentDidMount(): void {
     const { execution } = this.props;
@@ -243,11 +316,26 @@ export class Execution extends React.Component<IExecutionProps, IExecutionState>
     ReactGA.event({ category: 'Pipeline', action: 'Permalink clicked' });
   };
 
-  public render() {
-    const { application, execution, showAccountLabels, showDurations, standalone, title } = this.props;
-    const { pipelinesUrl, restartDetails, showingDetails, sortFilter, viewState } = this.state;
+  private handleToggleDetails = (): void => {
+    ReactGA.event({ category: 'Pipeline', action: 'Execution details toggled (Details link)' });
+    this.toggleDetails();
+  };
 
-    const { CopyToClipboard } = NgReact;
+  public render() {
+    const {
+      application,
+      execution,
+      showAccountLabels,
+      showDurations,
+      standalone,
+      title,
+      cancelHelpText,
+      pipelineConfig,
+    } = this.props;
+    const { pipelinesUrl, restartDetails, showingDetails, showingParams, sortFilter, viewState } = this.state;
+    const { trigger } = execution;
+    const { artifacts, resolvedExpectedArtifacts } = trigger;
+
     const accountLabels = this.props.execution.deploymentTargets.map(account => (
       <AccountTag key={account} account={account} />
     ));
@@ -274,6 +362,15 @@ export class Execution extends React.Component<IExecutionProps, IExecutionState>
       'show-durations': showDurations,
     });
 
+    const { displayableParameters, pinnedDisplayableParameters } = this.getDisplayableParameters(
+      execution,
+      pipelineConfig,
+    );
+
+    const parametersAndArtifactsExpanded =
+      showingParams ||
+      (displayableParameters.length === pinnedDisplayableParameters.length && !resolvedExpectedArtifacts.length);
+
     return (
       <div className={className} id={`execution-${execution.id}`}>
         <div className={`execution-overview group-by-${sortFilter.groupBy}`}>
@@ -293,8 +390,8 @@ export class Execution extends React.Component<IExecutionProps, IExecutionState>
           )}
           <ExecutionStatus
             execution={execution}
-            toggleDetails={this.toggleDetails}
             showingDetails={showingDetails}
+            showingParams={showingParams}
             standalone={standalone}
           />
           <div className="execution-bar">
@@ -366,14 +463,51 @@ export class Execution extends React.Component<IExecutionProps, IExecutionState>
               </span>
             )}
             {execution.isActive && (
-              <Tooltip value="Cancel execution">
+              <Tooltip value={cancelHelpText}>
                 <button className="link" onClick={this.handleCancelClick}>
                   <i className="far fa-times-circle" />
                 </button>
               </Tooltip>
             )}
           </div>
+
+          <div className="execution-parameters-button">
+            <a className="clickable" onClick={this.toggleParams}>
+              <span
+                className={`small glyphicon ${
+                  parametersAndArtifactsExpanded ? 'glyphicon-chevron-down' : 'glyphicon-chevron-right'
+                }`}
+              />
+              {parametersAndArtifactsExpanded ? '' : 'View All '}
+              Parameters/Artifacts ({displayableParameters.length}/{`${resolvedExpectedArtifacts.length}`})
+            </a>
+          </div>
+          <ExecutionParameters
+            shouldShowAllParams={showingParams}
+            displayableParameters={displayableParameters}
+            pinnedDisplayableParameters={pinnedDisplayableParameters}
+          />
+
+          {SETTINGS.feature.artifacts && (
+            <ResolvedArtifactList
+              artifacts={artifacts}
+              resolvedExpectedArtifacts={resolvedExpectedArtifacts}
+              showingExpandedArtifacts={showingParams}
+            />
+          )}
+
+          {!standalone && (
+            <div className="execution-details-button">
+              <a className="clickable" onClick={this.handleToggleDetails}>
+                <span
+                  className={`small glyphicon ${showingDetails ? 'glyphicon-chevron-down' : 'glyphicon-chevron-right'}`}
+                />
+                Execution Details
+              </a>
+            </div>
+          )}
         </div>
+
         {showingDetails && (
           <div className="execution-graph">
             <PipelineGraph execution={execution} onNodeClick={this.handleNodeClick} viewState={viewState} />

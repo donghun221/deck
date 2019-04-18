@@ -1,9 +1,11 @@
 'use strict';
 
-import { AccountService, SECURITY_GROUP_READER } from '@spinnaker/core';
+import { AccountService, API, SECURITY_GROUP_READER } from '@spinnaker/core';
 
 describe('Controller: Azure.CreateSecurityGroup', function() {
-  beforeEach(window.module(SECURITY_GROUP_READER, require('./CreateSecurityGroupCtrl.js').name));
+  var $http;
+
+  beforeEach(window.module(SECURITY_GROUP_READER, require('./CreateSecurityGroupCtrl').name));
 
   describe('filtering', function() {
     // Initialize the controller and a mock scope
@@ -58,12 +60,21 @@ describe('Controller: Azure.CreateSecurityGroup', function() {
             application: {},
             securityGroup: { regions: [], securityGroupIngress: [] },
           });
+
           this.$scope.$digest();
         };
       }),
     );
 
+    beforeEach(
+      window.inject(function($httpBackend) {
+        // Set up the mock http service responses
+        $http = $httpBackend;
+      }),
+    );
+
     it('initializes with no firewalls available for ingress permissions', function() {
+      $http.when('GET', API.baseUrl + '/networks').respond([]);
       this.initializeCtrl();
       expect(this.$scope.securityGroup.securityRules.length).toBe(0);
     });

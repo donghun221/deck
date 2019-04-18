@@ -1,10 +1,12 @@
 import { IStage } from './IStage';
 import { ITrigger } from './ITrigger';
 import { IExpectedArtifact } from 'core/domain/IExpectedArtifact';
+import { IEntityTags } from './IEntityTags';
 
 export interface IPipeline {
   application: string;
   description?: string;
+  entityTags?: IEntityTags;
   id: string;
   index: number;
   isNew?: boolean;
@@ -13,6 +15,8 @@ export interface IPipeline {
   locked?: boolean;
   limitConcurrent: boolean;
   name: string;
+  respectQuietPeriod?: boolean;
+  schema?: string;
   stages: IStage[];
   strategy: boolean;
   triggers: ITrigger[];
@@ -31,6 +35,7 @@ export interface IParameter {
   description: string;
   default: string;
   hasOptions: boolean;
+  pinned: boolean;
   options: IParameterOption[];
   condition?: IParameterCondition;
 }
@@ -47,6 +52,7 @@ export interface IParameterOption {
 
 export interface IPipelineCommand {
   extraFields?: { [key: string]: any };
+  triggerInvalid?: boolean;
   pipeline: IPipeline;
   trigger: ITrigger;
   notificationEnabled: boolean;
@@ -56,4 +62,10 @@ export interface IPipelineCommand {
     when: string[];
   };
   pipelineName: string;
+}
+
+export interface IPipelineRef {
+  application: String;
+  name: String;
+  id?: String;
 }

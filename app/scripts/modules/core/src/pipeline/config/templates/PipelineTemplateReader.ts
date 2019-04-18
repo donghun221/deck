@@ -3,6 +3,7 @@ import { $q } from 'ngimport';
 import { flatten } from 'lodash';
 import { API } from 'core/api/ApiService';
 import { IPipeline } from 'core/domain/IPipeline';
+import { IPipelineTemplateV2 } from 'core/domain/IPipelineTemplateV2';
 
 export interface IPipelineTemplate {
   id: string;
@@ -78,7 +79,7 @@ export interface IPipelineTemplatePlanError {
 export class PipelineTemplateReader {
   public static getPipelineTemplateFromSourceUrl(
     source: string,
-    executionId?: String,
+    executionId?: string,
     pipelineConfigId?: string,
   ): IPromise<IPipelineTemplate> {
     return API.one('pipelineTemplates')
@@ -91,7 +92,7 @@ export class PipelineTemplateReader {
       });
   }
 
-  public static getPipelinePlan(config: IPipelineTemplateConfig, executionId?: String): IPromise<IPipeline> {
+  public static getPipelinePlan(config: IPipelineTemplateConfig, executionId?: string): IPromise<IPipeline> {
     return API.one('pipelines')
       .one('start')
       .post({ ...config, plan: true, executionId });
@@ -110,6 +111,35 @@ export class PipelineTemplateReader {
       .then(templates => {
         templates.forEach(template => (template.selfLink = `spinnaker://${template.id}`));
         return templates;
+      });
+  }
+
+  public static getPipelineTemplateConfig({
+    name,
+    application,
+    source,
+  }: {
+    name: string;
+    application: string;
+    source: string;
+  }): Partial<IPipelineTemplateConfig> {
+    return {
+      config: {
+        schema: '1',
+        pipeline: {
+          name,
+          application,
+          template: { source },
+        },
+      },
+    };
+  }
+
+  public static getV2PipelineTemplateList(): IPromise<IPipelineTemplateV2[]> {
+    return API.one('pipelineTemplates')
+      .get()
+      .then((templates: IPipelineTemplateV2[]) => {
+        return templates.filter(({ schema }) => schema === 'v2');
       });
   }
 }

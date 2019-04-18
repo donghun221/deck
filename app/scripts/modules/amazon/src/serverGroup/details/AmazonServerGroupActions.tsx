@@ -18,6 +18,7 @@ import { IAmazonServerGroup, IAmazonServerGroupView } from 'amazon/domain';
 import { AmazonCloneServerGroupModal } from 'amazon/serverGroup/configure/wizard/AmazonCloneServerGroupModal';
 import { AwsReactInjector } from 'amazon/reactShims';
 import { IAmazonServerGroupCommand } from '../configure';
+import { AmazonResizeServerGroupModal } from './resize/AmazonResizeServerGroupModal';
 
 export interface IAmazonServerGroupActionsProps extends IServerGroupActionsProps {
   serverGroup: IAmazonServerGroupView;
@@ -149,7 +150,7 @@ export class AmazonServerGroupActions extends React.Component<IAmazonServerGroup
       header: 'Rolling back?',
       body: `Spinnaker provides an orchestrated rollback feature to carefully restore a different version of this
              server group. Do you want to use the orchestrated rollback?`,
-      buttonText: `Yes, let's start the orchestrated rollback`,
+      buttonText: `Yes, take me to the rollback settings modal`,
       cancelButtonText: 'No, I just want to enable the server group',
     };
 
@@ -255,17 +256,8 @@ export class AmazonServerGroupActions extends React.Component<IAmazonServerGroup
   };
 
   private resizeServerGroup = (): void => {
-    ModalInjector.modalService.open({
-      templateUrl: ReactInjector.overrideRegistry.getTemplate(
-        'aws.resize.modal',
-        require('./resize/resizeServerGroup.html'),
-      ),
-      controller: 'awsResizeServerGroupCtrl as ctrl',
-      resolve: {
-        serverGroup: () => this.props.serverGroup,
-        application: () => this.props.app,
-      },
-    });
+    const { app, serverGroup } = this.props;
+    AmazonResizeServerGroupModal.show({ application: app, serverGroup });
   };
 
   private cloneServerGroup = (): void => {
@@ -309,14 +301,13 @@ export class AmazonServerGroupActions extends React.Component<IAmazonServerGroup
               </a>
             </li>
           )}
-          {this.hasDisabledInstances() &&
-            !this.isEnableLocked() && (
-              <li>
-                <a className="clickable" onClick={this.enableServerGroup}>
-                  Enable
-                </a>
-              </li>
-            )}
+          {this.hasDisabledInstances() && !this.isEnableLocked() && (
+            <li>
+              <a className="clickable" onClick={this.enableServerGroup}>
+                Enable
+              </a>
+            </li>
+          )}
           {this.isEnableLocked() && (
             <li className="disabled">
               <Tooltip value="Cannot enable this server group until resize operation completes" placement="left">

@@ -1,9 +1,10 @@
 import * as React from 'react';
 import { find, get } from 'lodash';
 
+import { StageFailureMessage } from 'core/pipeline';
 import { IStage } from 'core/domain';
-import { IExecutionDetailsSectionProps } from 'core/pipeline/config/stages/core';
-import { ExecutionDetailsSection } from '../core/ExecutionDetailsSection';
+import { IExecutionDetailsSectionProps } from 'core/pipeline/config/stages/common';
+import { ExecutionDetailsSection } from '../common/ExecutionDetailsSection';
 
 export interface IApplySourceServerGroupCapacityDetailsState {
   parentDeployStage: IStage;
@@ -41,6 +42,8 @@ export class ApplySourceServerGroupCapacityDetails extends React.Component<
             </dl>
           </div>
         </div>
+
+        <StageFailureMessage stage={stage} message={stage.failureMessage} />
       </ExecutionDetailsSection>
     );
   }

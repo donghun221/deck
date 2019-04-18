@@ -85,6 +85,17 @@ class InternalLoadBalancerCtrl extends CommonGceLoadBalancerCtrl implements ICon
 
   private sessionAffinityModelToViewMap: any = _.invert(this.sessionAffinityViewToModelMap);
 
+  public static $inject = [
+    '$scope',
+    'application',
+    '$uibModalInstance',
+    'loadBalancer',
+    'gceCommonLoadBalancerCommandBuilder',
+    'isNew',
+    'wizardSubFormValidation',
+    'gceXpnNamingService',
+    '$state',
+  ];
   constructor(
     public $scope: IPrivateScope,
     public application: Application,
@@ -96,7 +107,6 @@ class InternalLoadBalancerCtrl extends CommonGceLoadBalancerCtrl implements ICon
     private gceXpnNamingService: any,
     $state: StateService,
   ) {
-    'ngInject';
     super($scope, application, $uibModalInstance, $state);
   }
 
@@ -263,5 +273,5 @@ export const GCE_INTERNAL_LOAD_BALANCER_CTRL = 'spinnaker.gce.internalLoadBalanc
 module(GCE_INTERNAL_LOAD_BALANCER_CTRL, [
   GCE_HEALTH_CHECK_SELECTOR_COMPONENT,
   GCE_COMMON_LOAD_BALANCER_COMMAND_BUILDER,
-  require('google/common/xpnNaming.gce.service.js').name,
+  require('google/common/xpnNaming.gce.service').name,
 ]).controller('gceInternalLoadBalancerCtrl', InternalLoadBalancerCtrl);

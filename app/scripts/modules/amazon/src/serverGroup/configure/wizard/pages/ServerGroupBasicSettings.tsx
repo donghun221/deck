@@ -1,82 +1,64 @@
 import * as React from 'react';
-import { Option } from 'react-select';
-import { FormikProps } from 'formik';
-import { Observable, Subject } from 'rxjs';
+import * as DOMPurify from 'dompurify';
+import { Field, FormikProps } from 'formik';
 
 import {
-  NgReact,
+  AccountSelectInput,
+  DeploymentStrategySelector,
   HelpField,
-  IWizardPageProps,
-  wizardPage,
   NameUtils,
   RegionSelectField,
   Application,
   ReactInjector,
-  TetheredSelect,
   IServerGroup,
+  IWizardPageComponent,
   TaskReason,
-  Spinner,
 } from '@spinnaker/core';
 
-import { AwsNgReact } from 'amazon/reactShims';
+import { IAmazonImage } from 'amazon/image';
+import { SubnetSelectField } from 'amazon/subnet';
 
+import { AmazonImageSelectInput } from '../../AmazonImageSelectInput';
 import { IAmazonServerGroupCommand } from '../../serverGroupConfiguration.service';
 
-const isNotExpressionLanguage = (field: string) => field && !field.includes('${');
+const isExpressionLanguage = (field: string) => field && field.includes('${');
 const isStackPattern = (stack: string) =>
-  isNotExpressionLanguage(stack) ? /^([a-zA-Z_0-9._${}]*(\${.+})*)*$/.test(stack) : true;
+  !isExpressionLanguage(stack) ? /^([a-zA-Z_0-9._${}]*(\${.+})*)*$/.test(stack) : true;
 const isDetailPattern = (detail: string) =>
-  isNotExpressionLanguage(detail) ? /^([a-zA-Z_0-9._${}-]*(\${.+})*)*$/.test(detail) : true;
+  !isExpressionLanguage(detail) ? /^([a-zA-Z_0-9._${}-]*(\${.+})*)*$/.test(detail) : true;
 
 export interface IServerGroupBasicSettingsProps {
   app: Application;
+  formik: FormikProps<IAmazonServerGroupCommand>;
 }
 
 export interface IServerGroupBasicSettingsState {
-  isLoadingImages: boolean;
-  images: any[];
+  selectedImage: IAmazonImage;
   namePreview: string;
   createsNewCluster: boolean;
   latestServerGroup: IServerGroup;
   showPreviewAsWarning: boolean;
 }
 
-class ServerGroupBasicSettingsImpl extends React.Component<
-  IServerGroupBasicSettingsProps & IWizardPageProps & FormikProps<IAmazonServerGroupCommand>,
-  IServerGroupBasicSettingsState
-> {
-  public static LABEL = 'Basic Settings';
-
-  private imageSearchResultsStream = new Subject();
-
-  // TODO: Extract the image selector into another component
-  constructor(props: IServerGroupBasicSettingsProps & IWizardPageProps & FormikProps<IAmazonServerGroupCommand>) {
+export class ServerGroupBasicSettings
+  extends React.Component<IServerGroupBasicSettingsProps, IServerGroupBasicSettingsState>
+  implements IWizardPageComponent<IAmazonServerGroupCommand> {
+  constructor(props: IServerGroupBasicSettingsProps) {
     super(props);
-    const { disableImageSelection } = props.values.viewState;
-    this.state = {
-      images: disableImageSelection
-        ? []
-        : props.values.backingData.filtered.images.map(i => {
-            i.label = this.getImageLabel(i);
-            return i;
-          }),
-      isLoadingImages: false,
-      ...this.getStateFromProps(props),
-    };
+    const {
+      amiName,
+      region,
+      viewState: { imageId },
+    } = props.formik.values;
+    const selectedImage = AmazonImageSelectInput.makeFakeImage(amiName, imageId, region);
+    this.state = { ...this.getStateFromProps(props), selectedImage };
   }
 
-  private getImageLabel(image: any) {
-    if (image.label) {
-      return image.label;
-    }
-    return `${image.message || ''}${image.imageName || ''} ${image.ami ? `(${image.ami})` : ''}`;
-  }
-
-  private getStateFromProps(
-    props: IServerGroupBasicSettingsProps & IWizardPageProps & FormikProps<IAmazonServerGroupCommand>,
-  ) {
-    const { app, values } = props;
+  private getStateFromProps(props: IServerGroupBasicSettingsProps) {
+    const { app } = props;
+    const { values } = props.formik;
     const { mode } = values.viewState;
+
     const namePreview = NameUtils.getClusterName(app.name, values.stack, values.freeFormDetails);
     const createsNewCluster = !app.clusters.find(c => c.name === namePreview);
     const showPreviewAsWarning = (mode === 'create' && !createsNewCluster) || (mode !== 'create' && createsNewCluster);
@@ -95,94 +77,21 @@ class ServerGroupBasicSettingsImpl extends React.Component<
     return { namePreview, createsNewCluster, latestServerGroup, showPreviewAsWarning };
   }
 
-  private showLoadingSpinner = () => {
-    this.setState({
-      isLoadingImages: true,
-      images: [
-        {
-          disabled: true,
-          message: (
-            <div className="horizontal center">
-              <Spinner size="small" />
-            </div>
-          ),
-        },
-      ],
-    });
-  };
+  private imageChanged = (image: IAmazonImage) => {
+    const { setFieldValue, values } = this.props.formik;
+    this.setState({ selectedImage: image });
 
-  public componentDidMount() {
-    const { values } = this.props;
-
-    this.imageSearchResultsStream
-      .do(this.showLoadingSpinner)
-      .debounceTime(250)
-      .switchMap(this.searchImagesImpl)
-      .subscribe(data => {
-        const images = data.map((image: any) => {
-          if (image.message && !image.imageName) {
-            return image;
-          }
-
-          const i = {
-            imageName: image.imageName,
-            ami: image.amis && image.amis[values.region] ? image.amis[values.region][0] : null,
-            virtualizationType: image.attributes ? image.attributes.virtualizationType : null,
-            label: '',
-          };
-          i.label = this.getImageLabel(i);
-          return i;
-        });
-
-        values.backingData.filtered.images = images;
-        values.backingData.packageImages = values.backingData.filtered.images;
-        this.setState({ images, isLoadingImages: false });
-      });
-  }
-
-  private searchImagesImpl = (q: string) => {
-    const { selectedProvider, region } = this.props.values;
-
-    const findImagesPromise = ReactInjector.imageReader.findImages({ provider: selectedProvider, q, region });
-    return Observable.fromPromise<any[]>(findImagesPromise).map(result => {
-      if (result.length === 0 && q.startsWith('ami-') && q.length === 12) {
-        // allow 'advanced' users to continue with just an ami id (backing image may not have been indexed yet)
-        const record = {
-          imageName: q,
-          amis: {},
-          attributes: {
-            virtualizationType: '*',
-          },
-        } as any;
-
-        // trust that the specific image exists in the selected region
-        record.amis[region] = [q];
-        result = [record];
-      }
-      return result;
-    });
-  };
-
-  private searchImages = (q: string) => {
-    this.imageSearchResultsStream.next(q);
-  };
-
-  private enableAllImageSearch = () => {
-    this.props.values.viewState.useAllImageSelection = true;
-    this.searchImages('');
-  };
-
-  private imageChanged = (image: any) => {
-    const { setFieldValue, values } = this.props;
-    values.virtualizationType = image.virtualizationType;
-    values.amiName = image.amiName;
-    setFieldValue('virtualizationType', image.virtualizationType);
-    setFieldValue('amiName', image.imageName);
+    const virtualizationType = image && image.attributes.virtualizationType;
+    const imageName = image && image.imageName;
+    values.virtualizationType = virtualizationType;
+    values.amiName = imageName;
+    setFieldValue('virtualizationType', virtualizationType);
+    setFieldValue('amiName', imageName);
     values.imageChanged(values);
   };
 
   private accountUpdated = (account: string): void => {
-    const { setFieldValue, values } = this.props;
+    const { setFieldValue, values } = this.props.formik;
     values.credentials = account;
     values.credentialsChanged(values);
     values.subnetChanged(values);
@@ -190,14 +99,14 @@ class ServerGroupBasicSettingsImpl extends React.Component<
   };
 
   private regionUpdated = (region: string): void => {
-    const { values, setFieldValue } = this.props;
+    const { values, setFieldValue } = this.props.formik;
     values.region = region;
     values.regionChanged(values);
     setFieldValue('region', region);
   };
 
   private subnetUpdated = (): void => {
-    const { setFieldValue, values } = this.props;
+    const { setFieldValue, values } = this.props.formik;
     values.subnetChanged(values);
     setFieldValue('subnetType', values.subnetType);
   };
@@ -222,12 +131,14 @@ class ServerGroupBasicSettingsImpl extends React.Component<
   }
 
   private clientRequestsChanged = () => {
-    this.props.values.toggleSuspendedProcess(this.props.values, 'AddToLoadBalancer');
+    const { values, setFieldValue } = this.props.formik;
+    values.toggleSuspendedProcess(values, 'AddToLoadBalancer');
+    setFieldValue('suspendedProcesses', values.suspendedProcesses);
     this.setState({});
   };
 
   private navigateToLatestServerGroup = () => {
-    const { values } = this.props;
+    const { values } = this.props.formik;
     const { latestServerGroup } = this.state;
 
     const params = {
@@ -236,8 +147,6 @@ class ServerGroupBasicSettingsImpl extends React.Component<
       region: latestServerGroup.region,
       serverGroup: latestServerGroup.name,
     };
-
-    // TODO: Dismiss the modal
 
     const { $state } = ReactInjector;
     if ($state.is('home.applications.application.insight.clusters')) {
@@ -248,53 +157,44 @@ class ServerGroupBasicSettingsImpl extends React.Component<
   };
 
   private stackChanged = (stack: string) => {
-    const { setFieldValue, values } = this.props;
+    const { setFieldValue, values } = this.props.formik;
     values.stack = stack; // have to do it here to make sure it's done before calling values.clusterChanged
     setFieldValue('stack', stack);
     values.clusterChanged(values);
   };
 
   private freeFormDetailsChanged = (freeFormDetails: string) => {
-    const { setFieldValue, values } = this.props;
+    const { setFieldValue, values } = this.props.formik;
     values.freeFormDetails = freeFormDetails; // have to do it here to make sure it's done before calling values.clusterChanged
     setFieldValue('freeFormDetails', freeFormDetails);
     values.clusterChanged(values);
   };
 
-  public componentWillReceiveProps(
-    nextProps: IServerGroupBasicSettingsProps & IWizardPageProps & FormikProps<IAmazonServerGroupCommand>,
-  ) {
+  public componentWillReceiveProps(nextProps: IServerGroupBasicSettingsProps) {
     this.setState(this.getStateFromProps(nextProps));
   }
 
   private handleReasonChanged = (reason: string) => {
-    this.props.setFieldValue('reason', reason);
+    this.props.formik.setFieldValue('reason', reason);
   };
 
   private strategyChanged = (values: IAmazonServerGroupCommand, strategy: any) => {
     values.onStrategyChange(values, strategy);
-    this.props.setFieldValue('strategy', strategy.key);
+    this.props.formik.setFieldValue('strategy', strategy.key);
+  };
+
+  private onStrategyFieldChange = (key: string, value: any) => {
+    this.props.formik.setFieldValue(key, value);
   };
 
   public render() {
-    const { app, errors, values } = this.props;
-    const {
-      createsNewCluster,
-      isLoadingImages,
-      images,
-      latestServerGroup,
-      namePreview,
-      showPreviewAsWarning,
-    } = this.state;
-    const { AccountSelectField, DeploymentStrategySelector } = NgReact;
-    const { SubnetSelectField } = AwsNgReact;
+    const { app, formik } = this.props;
+    const { errors, values } = formik;
+    const { createsNewCluster, latestServerGroup, namePreview, showPreviewAsWarning } = this.state;
 
     const accounts = values.backingData.accounts;
     const readOnlyFields = values.viewState.readOnlyFields || {};
 
-    const selectedImage = values.amiName
-      ? values.backingData.filtered.images.find(image => image.imageName === values.amiName)
-      : undefined;
     return (
       <div className="container-fluid form-horizontal">
         {values.regionIsDeprecated(values) && (
@@ -309,13 +209,12 @@ class ServerGroupBasicSettingsImpl extends React.Component<
         <div className="form-group">
           <div className="col-md-3 sm-label-right">Account</div>
           <div className="col-md-7">
-            <AccountSelectField
+            <AccountSelectInput
+              value={values.credentials}
+              onChange={(evt: any) => this.accountUpdated(evt.target.value)}
               readOnly={readOnlyFields.credentials}
-              component={values}
-              field="credentials"
               accounts={accounts}
               provider="aws"
-              onChange={this.accountUpdated}
             />
           </div>
         </div>
@@ -379,52 +278,29 @@ class ServerGroupBasicSettingsImpl extends React.Component<
             </div>
           </div>
         )}
+        {values.viewState.imageSourceText && (
+          <div className="form-group">
+            <div className="col-md-3 sm-label-right">Image Source</div>
+            <div className="col-md-7" style={{ marginTop: '5px' }}>
+              <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(values.viewState.imageSourceText) }} />
+            </div>
+          </div>
+        )}
         {!values.viewState.disableImageSelection && (
           <div className="form-group">
             <div className="col-md-3 sm-label-right">
               Image <HelpField id="aws.serverGroup.imageName" />
             </div>
-            {values.viewState.useAllImageSelection && (
-              <div className="col-md-9">
-                <TetheredSelect
-                  clearable={false}
-                  placeholder="Search for an image..."
-                  required={true}
-                  valueKey="imageName"
-                  filterOptions={isLoadingImages ? (false as any) : undefined}
-                  options={images}
-                  optionRenderer={this.imageOptionRenderer}
-                  onInputChange={value => this.searchImages(value)}
-                  onChange={(value: Option<string>) => this.imageChanged(value)}
-                  onSelectResetsInput={false}
-                  onBlurResetsInput={false}
-                  onCloseResetsInput={false}
-                  value={selectedImage}
-                  valueRenderer={this.imageOptionRenderer}
-                />
-              </div>
-            )}
-            {!values.viewState.useAllImageSelection && (
-              <div className="col-md-9">
-                <TetheredSelect
-                  clearable={false}
-                  placeholder="Pick an image"
-                  required={true}
-                  valueKey="imageName"
-                  options={images}
-                  optionRenderer={this.imageOptionRenderer}
-                  onChange={(value: Option<string>) => this.imageChanged(value)}
-                  onSelectResetsInput={false}
-                  onBlurResetsInput={false}
-                  onCloseResetsInput={false}
-                  value={selectedImage}
-                  valueRenderer={this.imageOptionRenderer}
-                />
-                <a className="clickable" onClick={this.enableAllImageSearch}>
-                  Search All Images
-                </a>{' '}
-                <HelpField id="aws.serverGroup.allImages" />
-              </div>
+            {isExpressionLanguage(values.amiName) ? (
+              <Field name="amiName" />
+            ) : (
+              <AmazonImageSelectInput
+                onChange={image => this.imageChanged(image)}
+                value={this.state.selectedImage}
+                application={app}
+                credentials={values.credentials}
+                region={values.region}
+              />
             )}
           </div>
         )}
@@ -444,10 +320,13 @@ class ServerGroupBasicSettingsImpl extends React.Component<
             </label>
           </div>
         </div>
-        {!values.viewState.disableStrategySelection &&
-          values.selectedProvider && (
-            <DeploymentStrategySelector command={values} onStrategyChange={this.strategyChanged} />
-          )}
+        {!values.viewState.disableStrategySelection && values.selectedProvider && (
+          <DeploymentStrategySelector
+            command={values}
+            onFieldChange={this.onStrategyFieldChange}
+            onStrategyChange={this.strategyChanged}
+          />
+        )}
         {!values.viewState.hideClusterNamePreview && (
           <div className="form-group">
             <div className="col-md-12">
@@ -460,26 +339,24 @@ class ServerGroupBasicSettingsImpl extends React.Component<
                       {createsNewCluster && <span> (new cluster)</span>}
                     </strong>
                   </p>
-                  {!createsNewCluster &&
-                    values.viewState.mode === 'create' &&
-                    latestServerGroup && (
-                      <div className="text-left">
-                        <p>There is already a server group in this cluster. Do you want to clone it?</p>
-                        <p>
-                          Cloning copies the entire configuration from the selected server group, allowing you to modify
-                          whichever fields (e.g. image) you need to change in the new server group.
-                        </p>
-                        <p>
-                          To clone a server group, select "Clone" from the "Server Group Actions" menu in the details
-                          view of the server group.
-                        </p>
-                        <p>
-                          <a className="clickable" onClick={this.navigateToLatestServerGroup}>
-                            Go to details for {latestServerGroup.name}
-                          </a>
-                        </p>
-                      </div>
-                    )}
+                  {!createsNewCluster && values.viewState.mode === 'create' && latestServerGroup && (
+                    <div className="text-left">
+                      <p>There is already a server group in this cluster. Do you want to clone it?</p>
+                      <p>
+                        Cloning copies the entire configuration from the selected server group, allowing you to modify
+                        whichever fields (e.g. image) you need to change in the new server group.
+                      </p>
+                      <p>
+                        To clone a server group, select "Clone" from the "Server Group Actions" menu in the details view
+                        of the server group.
+                      </p>
+                      <p>
+                        <a className="clickable" onClick={this.navigateToLatestServerGroup}>
+                          Go to details for {latestServerGroup.name}
+                        </a>
+                      </p>
+                    </div>
+                  )}
                 </h5>
               </div>
             </div>
@@ -489,21 +366,4 @@ class ServerGroupBasicSettingsImpl extends React.Component<
       </div>
     );
   }
-
-  private imageOptionRenderer = (option: Option) => {
-    return (
-      <>
-        <span>{option.message}</span>
-        <span>{option.imageName}</span>
-        {option.ami && (
-          <span>
-            {' '}
-            (<span>{option.ami}</span>)
-          </span>
-        )}
-      </>
-    );
-  };
 }
-
-export const ServerGroupBasicSettings = wizardPage<IServerGroupBasicSettingsProps>(ServerGroupBasicSettingsImpl);

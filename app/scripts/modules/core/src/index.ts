@@ -58,6 +58,7 @@ export * from './pageTitle';
 export * from './pagerDuty';
 export * from './pipeline';
 export * from './presentation';
+export * from './projects';
 export * from './pubsub';
 
 export * from './reactShims';
@@ -71,6 +72,7 @@ export * from './securityGroup';
 export * from './serverGroup';
 export * from './serverGroupManager';
 export * from './serviceAccount';
+export * from './services';
 export * from './state';
 export * from './storage';
 export * from './subnet';
@@ -82,5 +84,7 @@ export * from './utils';
 export * from './validation';
 
 export * from './widgets';
+
+export * from './yamlEditor';
 
 export * from './core.module';

@@ -2,11 +2,11 @@ import * as React from 'react';
 import * as classNames from 'classnames';
 
 import { Key, ITag, TagList } from 'core/widgets';
+import { FirewallLabels } from 'core/securityGroup';
 
 import { IFilterType, SearchFilterTypeRegistry } from './SearchFilterTypeRegistry';
 import { Filters, IFiltersLayout } from './Filters';
 import { Filter } from './Filter';
-import { FirewallLabels } from 'core';
 
 import './search.less';
 
@@ -248,7 +248,7 @@ export class Search extends React.Component<ISearchProps, ISearchState> {
       case Key.ENTER:
         this.handleFilterSelection();
         break;
-      case Key.ESCAPE:
+      case Key.ESCAPE: {
         const text = this.inputElement.value;
         if (this.hasModifier(text) && !this.getSearchText(text)) {
           this.inputElement.value = '';
@@ -258,6 +258,7 @@ export class Search extends React.Component<ISearchProps, ISearchState> {
           isOpen: false,
         });
         break;
+      }
     }
   };
 
@@ -297,8 +298,9 @@ export class Search extends React.Component<ISearchProps, ISearchState> {
 
   public render(): React.ReactElement<Search> {
     const { activeFilter, isFocused, isOpen, layouts, tags } = this.state;
+    // prettier-ignore
     const className = classNames({
-      search__input: true,
+      'search__input': true,
       'search__input--focus': isFocused,
       'search__input--blur': !isFocused,
     });

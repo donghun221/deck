@@ -1,11 +1,12 @@
 import { IController, IScope, module } from 'angular';
 
+import { ArtifactTypePatterns } from 'core/artifact';
 import { IgorService, BuildServiceType } from 'core/ci/igor.service';
 import { Registry } from 'core/registry';
 import { ServiceAccountReader } from 'core/serviceAccount/ServiceAccountReader';
 import { IBuildTrigger } from 'core/domain/ITrigger';
-import { SETTINGS } from 'core/config/settings';
 
+import { SETTINGS } from 'core/config/settings';
 import { TravisTriggerTemplate } from './TravisTriggerTemplate';
 
 export interface ITravisTriggerViewState {
@@ -24,8 +25,8 @@ export class TravisTrigger implements IController {
   public fiatEnabled: boolean;
   public serviceAccounts: string[];
 
+  public static $inject = ['$scope', 'trigger'];
   constructor($scope: IScope, public trigger: IBuildTrigger) {
-    'ngInject';
     this.fiatEnabled = SETTINGS.feature.fiatEnabled;
     ServiceAccountReader.getServiceAccounts().then(accounts => {
       this.serviceAccounts = accounts || [];
@@ -79,7 +80,7 @@ export class TravisTrigger implements IController {
 }
 
 export const TRAVIS_TRIGGER = 'spinnaker.core.pipeline.config.trigger.travis';
-module(TRAVIS_TRIGGER, [require('../trigger.directive.js').name])
+module(TRAVIS_TRIGGER, [require('../trigger.directive').name])
   .config(() => {
     Registry.pipeline.registerTrigger({
       label: 'Travis',
@@ -89,6 +90,8 @@ module(TRAVIS_TRIGGER, [require('../trigger.directive.js').name])
       controllerAs: '$ctrl',
       templateUrl: require('./travisTrigger.html'),
       manualExecutionComponent: TravisTriggerTemplate,
+      providesVersionForBake: true,
+      excludedArtifactTypePatterns: [ArtifactTypePatterns.JENKINS_FILE],
       validators: [
         {
           type: 'requiredField',

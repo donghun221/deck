@@ -3,9 +3,10 @@ import { find, get } from 'lodash';
 
 import { AccountTag } from 'core/account';
 import { ReactInjector } from 'core/reactShims';
-import { ExecutionDetailsSection, IExecutionDetailsSectionProps } from 'core/pipeline/config/stages/core';
-import { StageFailureMessage } from 'core/pipeline/details';
+import { ExecutionDetailsSection, IExecutionDetailsSectionProps } from 'core/pipeline/config/stages/common';
+import { StageFailureMessage } from 'core/pipeline';
 import { ClusterState } from 'core/state';
+import { UrlBuilder } from 'core/navigation';
 
 export interface IDeployResult {
   type: string;
@@ -60,7 +61,7 @@ export class CloneServerGroupExecutionDetails extends React.Component<
           provider: 'aws',
           project: ReactInjector.$stateParams.project,
         };
-        result.href = ReactInjector.urlBuilderService.buildFromMetadata(result);
+        result.href = UrlBuilder.buildFromMetadata(result);
         return result;
       });
     }
@@ -113,7 +114,9 @@ export class CloneServerGroupExecutionDetails extends React.Component<
             <div className="col-md-12">
               <div className="well alert alert-info">
                 <strong>Deployed: </strong>
-                {(deployResults || []).map(result => <DeployedServerGroup key={result.href} result={result} />)}
+                {(deployResults || []).map(result => (
+                  <DeployedServerGroup key={result.href} result={result} />
+                ))}
               </div>
             </div>
           </div>

@@ -12,6 +12,7 @@ export interface IAvailabilityZoneSelectorProps {
 }
 
 export interface IAvailabilityZoneSelectorState {
+  defaultZones: string[];
   usePreferredZones: boolean;
 }
 
@@ -22,12 +23,11 @@ export class AvailabilityZoneSelector extends React.Component<
   constructor(props: IAvailabilityZoneSelectorProps) {
     super(props);
     this.state = {
+      defaultZones: [],
       usePreferredZones: props.usePreferredZones || (!props.selectedZones || props.selectedZones.length === 0),
     };
-  }
 
-  public componentDidMount(): void {
-    this.setDefaultZones(this.props);
+    this.setDefaultZones(props);
   }
 
   public componentWillReceiveProps(nextProps: IAvailabilityZoneSelectorProps): void {
@@ -38,10 +38,14 @@ export class AvailabilityZoneSelector extends React.Component<
 
   private setDefaultZones(props: IAvailabilityZoneSelectorProps) {
     const { credentials, onChange, region } = props;
+    const { usePreferredZones } = this.state;
 
-    AccountService.getAvailabilityZonesForAccountAndRegion('aws', credentials, region).then(
-      preferredZones => preferredZones && onChange(preferredZones.slice()),
-    );
+    AccountService.getAvailabilityZonesForAccountAndRegion('aws', credentials, region).then(preferredZones => {
+      this.setState({ defaultZones: preferredZones });
+      if (usePreferredZones && preferredZones) {
+        onChange(preferredZones.slice());
+      }
+    });
   }
 
   private handleUsePreferredZonesChanged = (event: React.ChangeEvent<HTMLSelectElement>): void => {
@@ -59,14 +63,14 @@ export class AvailabilityZoneSelector extends React.Component<
 
   public render(): React.ReactElement<AvailabilityZoneSelector> {
     const { region, allZones, selectedZones } = this.props;
-    const { usePreferredZones } = this.state;
+    const { defaultZones, usePreferredZones } = this.state;
 
     return (
       <div className="form-group">
         <div className="col-md-3 sm-label-right">Availability Zones</div>
         {region && (
           <div className="col-md-7">
-            <p>Automatic Availability Zone Balancing:</p>
+            <p className="form-control-static">Automatic Availability Zone Balancing:</p>
             <select
               className="form-control input-sm"
               value={usePreferredZones ? 'true' : 'false'}
@@ -79,7 +83,11 @@ export class AvailabilityZoneSelector extends React.Component<
             {usePreferredZones && (
               <div>
                 <p className="form-control-static">Server group will be available in:</p>
-                <ul>{selectedZones.map(zone => <li key={zone}>{zone}</li>)}</ul>
+                <ul>
+                  {defaultZones.map(zone => (
+                    <li key={zone}>{zone}</li>
+                  ))}
+                </ul>
               </div>
             )}
             {!usePreferredZones && (

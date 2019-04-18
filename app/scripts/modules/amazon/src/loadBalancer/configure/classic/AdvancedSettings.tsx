@@ -1,94 +1,71 @@
 import * as React from 'react';
-import { Field, FormikProps } from 'formik';
+import { FormikProps } from 'formik';
 
-import { HelpField, IWizardPageProps, ValidationMessage, wizardPage } from '@spinnaker/core';
+import { Validators, FormikFormField, NumberInput, HelpField } from '@spinnaker/core';
 
 import { IAmazonClassicLoadBalancerUpsertCommand } from 'amazon/domain';
 
-class AdvancedSettingsImpl extends React.Component<
-  IWizardPageProps & FormikProps<IAmazonClassicLoadBalancerUpsertCommand>
-> {
-  public static LABEL = 'Advanced Settings';
+import './AdvancedSettings.css';
 
-  public validate(values: IAmazonClassicLoadBalancerUpsertCommand): { [key: string]: string } {
-    const errors: { [key: string]: string } = {};
+export interface IAdvancedSettingsProps {
+  formik: FormikProps<IAmazonClassicLoadBalancerUpsertCommand>;
+}
 
-    if (values.healthTimeout >= values.healthInterval) {
-      errors.healthTimeout = 'The health timeout must be less than the health interval.';
-    }
-
-    return errors;
-  }
-
+export class AdvancedSettings extends React.Component<IAdvancedSettingsProps> {
   public render() {
-    const { errors, values } = this.props;
+    const { values } = this.props.formik;
+    const { maxValue } = Validators;
     return (
-      <div className="form-group">
-        <div className="col-md-8 nest">
-          <div className="form-group">
-            <div className="col-md-6 sm-label-right">
-              <span>
-                <b>Timeout</b> <HelpField id="loadBalancer.advancedSettings.healthTimeout" />
-              </span>
-            </div>
-            <div className="col-md-4">
-              <Field
-                className="form-control input-sm"
-                type="number"
-                name="healthTimeout"
-                min={0}
-                max={values.healthInterval - 1}
-              />
-            </div>
-            {errors.healthTimeout && (
-              <div className="col-md-12 col-md-offset-6">
-                <ValidationMessage type="error" message={errors.healthTimeout} />
-              </div>
-            )}
-          </div>
+      <div className="form-group AmazonLoadBalancer-AdvancedSettings">
+        <FormikFormField
+          name="healthTimeout"
+          label="Timeout"
+          required={true}
+          fastField={false} /* This field depends on healthInterval */
+          help={<HelpField id="loadBalancer.advancedSettings.healthTimeout" />}
+          input={props => <NumberInput {...props} min={0} max={values.healthInterval} />}
+          validate={maxValue(values.healthInterval, 'Timeout must be less than the health interval.')}
+        />
 
-          <div className="form-group">
-            <div className="col-md-6 sm-label-right">
-              <span>
-                <b>Interval</b> <HelpField id="loadBalancer.advancedSettings.healthInterval" />
-              </span>
-            </div>
-            <div className="col-md-4">
-              <Field className="form-control input-sm" type="number" min="0" name="healthInterval" />
-            </div>
-          </div>
+        <FormikFormField
+          name="healthInterval"
+          label="Interval"
+          required={true}
+          help={<HelpField id="loadBalancer.advancedSettings.healthInterval" />}
+          input={props => <NumberInput {...props} min={0} />}
+        />
 
-          <div className="form-group">
-            <div className="col-md-6 sm-label-right">
-              <span>
-                <b>Healthy Threshold</b> <HelpField id="loadBalancer.advancedSettings.healthyThreshold" />
-              </span>
-            </div>
-            <div className="col-md-4">
-              <Field className="form-control input-sm" type="number" min="0" name="healthyThreshold" />
-            </div>
-          </div>
+        <FormikFormField
+          name="healthyThreshold"
+          label="Healthy Threshold"
+          required={true}
+          help={<HelpField id="loadBalancer.advancedSettings.healthyThreshold" />}
+          input={props => <NumberInput {...props} min={0} />}
+        />
 
-          <div className="form-group">
-            <div className="col-md-6 sm-label-right">
-              <span>
-                <b>Unhealthy Threshold</b> <HelpField id="loadBalancer.advancedSettings.unhealthyThreshold" />
-              </span>
-            </div>
-            <div className="col-md-4">
-              <Field className="form-control input-sm" type="number" min="0" name="unhealthyThreshold" />
-            </div>
-          </div>
-        </div>
+        <FormikFormField
+          name="unhealthyThreshold"
+          label="Unhealthy Threshold"
+          required={true}
+          help={<HelpField id="loadBalancer.advancedSettings.unhealthyThreshold" />}
+          input={props => <NumberInput {...props} min={0} />}
+        />
+
+        <FormikFormField
+          name="idleTimeout"
+          label="Idle Timeout"
+          required={true}
+          help={<HelpField id="loadBalancer.advancedSettings.idleTimeout" />}
+          input={props => <NumberInput {...props} min={0} />}
+        />
+
         <div className="col-md-12">
           <p>
-            Additional configuration options (idle timeout, cross-zone load balancing, session stickiness, access logs)
-            are available via the AWS console.
+            Additional configuration options (cross-zone load balancing, session stickiness, access logs) are available
+            via the AWS console.
           </p>
         </div>
       </div>
     );
   }
 }
-
-export const AdvancedSettings = wizardPage(AdvancedSettingsImpl);

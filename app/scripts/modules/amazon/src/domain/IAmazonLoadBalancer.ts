@@ -14,7 +14,7 @@ import { IAmazonServerGroup } from './IAmazonServerGroup';
 
 export type ClassicListenerProtocol = 'HTTP' | 'HTTPS' | 'TCP' | 'SSL';
 export type ALBListenerProtocol = 'HTTP' | 'HTTPS';
-export type IListenerActionType = 'forward' | 'authenticate-oidc';
+export type IListenerActionType = 'forward' | 'authenticate-oidc' | 'redirect';
 export type NLBListenerProtocol = 'TCP';
 
 export interface IAmazonLoadBalancer extends ILoadBalancer {
@@ -47,23 +47,39 @@ export interface IAmazonClassicLoadBalancer extends IAmazonLoadBalancer {
   healthyThreshold: number;
   listeners: IClassicListener[];
   unhealthyThreshold: number;
+  idleTimeout?: number;
 }
 
 export interface IAmazonApplicationLoadBalancer extends IAmazonLoadBalancer {
   listeners: IALBListener[];
   targetGroups: ITargetGroup[];
   ipAddressType?: string; // returned from clouddriver
+  deletionProtection: boolean;
+  idleTimeout: number;
 }
 
 export interface IAmazonNetworkLoadBalancer extends IAmazonLoadBalancer {
   listeners: INLBListener[];
   targetGroups: ITargetGroup[];
   ipAddressType?: string; // returned from clouddriver
+  deletionProtection: boolean;
+  idleTimeout: number;
+}
+
+export interface IRedirectActionConfig {
+  host?: string;
+  path?: string;
+  port?: string;
+  protocol?: 'HTTP' | 'HTTPS' | '#{protocol}';
+  query?: string;
+  statusCode: 'HTTP_301' | 'HTTP_302';
 }
 
 export interface IListenerAction {
   authenticateOidcConfig?: IAuthenticateOidcActionConfig;
   order?: number;
+  redirectActionConfig?: IRedirectActionConfig; // writes
+  redirectConfig?: IRedirectActionConfig; // reads
   targetGroupName?: string;
   type: IListenerActionType;
 }
@@ -191,7 +207,8 @@ export interface INLBTargetGroupDescription {
   // Defaults to 10
   healthCheckInterval?: number;
   healthCheckPort: string;
-  healthCheckProtocol: 'TCP';
+  healthCheckProtocol: 'TCP' | 'HTTP' | 'HTTPS';
+  healthCheckPath: string;
   // Defaults to 10
   healthyThreshold?: number;
   // Defaults to 5
@@ -233,14 +250,18 @@ export interface IAmazonClassicLoadBalancerUpsertCommand extends IAmazonLoadBala
   healthyThreshold?: number;
   listeners: IClassicListenerDescription[];
   unhealthyThreshold?: number;
+  idleTimeout?: number;
 }
 
 export interface IAmazonApplicationLoadBalancerUpsertCommand extends IAmazonLoadBalancerUpsertCommand {
+  deletionProtection: boolean;
+  idleTimeout: number;
   listeners: IListenerDescription[];
   targetGroups: IALBTargetGroupDescription[];
 }
 
 export interface IAmazonNetworkLoadBalancerUpsertCommand extends IAmazonLoadBalancerUpsertCommand {
+  deletionProtection: boolean;
   listeners: IListenerDescription[];
   targetGroups: INLBTargetGroupDescription[];
 }

@@ -1,21 +1,19 @@
 import * as React from 'react';
-import { Field, FormikProps } from 'formik';
+import { Field } from 'formik';
 import Select, { Option } from 'react-select';
 
-import { IWizardPageProps, HelpField, MapEditor, PlatformHealthOverride } from '@spinnaker/core';
+import { HelpField, MapEditor, PlatformHealthOverride } from '@spinnaker/core';
 
 import { AWSProviderSettings } from 'amazon/aws.settings';
 import { IAmazonServerGroupCommand } from 'amazon/serverGroup/configure/serverGroupConfiguration.service';
 
 import { IServerGroupAdvancedSettingsProps } from './ServerGroupAdvancedSettings';
 
-export class ServerGroupAdvancedSettingsCommon extends React.Component<
-  IServerGroupAdvancedSettingsProps & IWizardPageProps & FormikProps<IAmazonServerGroupCommand>
-> {
+export class ServerGroupAdvancedSettingsCommon extends React.Component<IServerGroupAdvancedSettingsProps> {
   private duplicateKeys = false;
 
-  public validate = (values: IAmazonServerGroupCommand): { [key: string]: string } => {
-    const errors: { [key: string]: string } = {};
+  public validate = (values: IAmazonServerGroupCommand) => {
+    const errors = {} as any;
 
     if (!values.keyPair) {
       errors.keyPair = 'Key Name is required';
@@ -28,26 +26,30 @@ export class ServerGroupAdvancedSettingsCommon extends React.Component<
   };
 
   private selectBlockDeviceMappingsSource = (source: string) => {
-    this.props.values.selectBlockDeviceMappingsSource(this.props.values, source);
+    const { values } = this.props.formik;
+    values.selectBlockDeviceMappingsSource(values, source);
     this.setState({});
   };
 
   private toggleSuspendedProcess = (process: string) => {
-    this.props.values.toggleSuspendedProcess(this.props.values, process);
+    const { values, setFieldValue } = this.props.formik;
+    values.toggleSuspendedProcess(values, process);
+    setFieldValue('suspendedProcesses', values.suspendedProcesses);
     this.setState({});
   };
 
   private platformHealthOverrideChanged = (healthNames: string[]) => {
-    this.props.setFieldValue('interestingHealthProviderNames', healthNames);
+    this.props.formik.setFieldValue('interestingHealthProviderNames', healthNames);
   };
 
   private tagsChanged = (tags: { [key: string]: string }, duplicateKeys: boolean) => {
     this.duplicateKeys = duplicateKeys;
-    this.props.setFieldValue('tags', tags);
+    this.props.formik.setFieldValue('tags', tags);
   };
 
   public render() {
-    const { app, setFieldValue, values } = this.props;
+    const { app } = this.props;
+    const { setFieldValue, values } = this.props.formik;
 
     const blockDeviceMappingsSource = values.getBlockDeviceMappingsSource(values);
     const keyPairs = values.backingData.filtered.keyPairs || [];
@@ -169,8 +171,8 @@ export class ServerGroupAdvancedSettingsCommon extends React.Component<
             <label>
               <input
                 type="checkbox"
-                value={values.instanceMonitoring ? 'true' : 'false'}
-                onChange={e => setFieldValue('instanceMonitoring', e.target.value === 'true')}
+                checked={values.instanceMonitoring}
+                onChange={e => setFieldValue('instanceMonitoring', e.target.checked)}
               />{' '}
               Enable Instance Monitoring{' '}
             </label>
@@ -184,8 +186,8 @@ export class ServerGroupAdvancedSettingsCommon extends React.Component<
             <label>
               <input
                 type="checkbox"
-                value={values.ebsOptimized ? 'true' : 'false'}
-                onChange={e => setFieldValue('ebsOptimized', e.target.value === 'true')}
+                checked={values.ebsOptimized}
+                onChange={e => setFieldValue('ebsOptimized', e.target.checked)}
               />{' '}
               Optimize Instances for EBS
             </label>
@@ -305,7 +307,7 @@ export class ServerGroupAdvancedSettingsCommon extends React.Component<
             </div>
             <div className="col-md-6">
               <PlatformHealthOverride
-                command={values}
+                interestingHealthProviderNames={values.interestingHealthProviderNames}
                 platformHealthType="Amazon"
                 onChange={this.platformHealthOverrideChanged}
               />
